@@ -338,7 +338,12 @@ async function handleLogin(){
 async function handleLogout(){
     if(friendsUnsub)friendsUnsub();if(chatUnsub)chatUnsub();
     closeModal('settingsModal');await auth.signOut();
-    pinStates['loginPin']='';document.getElementById('loginPin').value='';document.getElementById('loginPinReal').value='';
+    pinStates['loginPin']='';
+    document.getElementById('loginPin').value='';
+    document.getElementById('loginPinReal').value='';
+    document.getElementById('loginUsername').value='';
+    setBtn('loginBtn',false);
+    setBtn('registerBtn',false);
 }
 
 // ── SETUP ─────────────────────────────────────────────────
