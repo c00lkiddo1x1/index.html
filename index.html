@@ -500,9 +500,22 @@ async function removeFriend(uid) {
 }
 
 // ── CHAT ──────────────────────────────────────────────────
+// ── CHAT ──────────────────────────────────────────────────
+var activeFriend = null;
+var activeChatId = null;
+var mediaRecorder = null;
+var audioChunks = [];
+var isRecording = false;
+var localStream = null;
+var peerConnection = null;
+var callUnsub = null;
+
+var ICE_SERVERS = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+
 function openChat(friend) {
     if (chatUnsub) chatUnsub();
-    var chatId = [currentUser.uid, friend.uid].sort().join('_');
+    activeFriend = friend;
+    activeChatId = [currentUser.uid, friend.uid].sort().join('_');
 
     var chatModal = document.getElementById('chatModal');
     if (!chatModal) {
@@ -514,39 +527,105 @@ function openChat(friend) {
     chatModal.innerHTML = '';
     chatModal.classList.add('active');
 
+    // ── HEADER ──
     var header = document.createElement('div');
-    header.className = 'modal-header';
-    header.innerHTML = '<span>' + friend.displayName + '</span>';
-    var closeBtn = document.createElement('button');
-    closeBtn.className = 'modal-close';
-    closeBtn.textContent = 'X';
-    closeBtn.onclick = function() { chatModal.classList.remove('active'); if (chatUnsub) chatUnsub(); };
-    header.appendChild(closeBtn);
+    header.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:3px solid #fff;flex-shrink:0;';
+
+    // Back button
+    var backBtn = document.createElement('button');
+    backBtn.textContent = '\u2190';
+    backBtn.style.cssText = "background:none;border:none;color:#fff;font-size:22px;cursor:pointer;font-family:'Courier Prime',monospace;padding:0 8px 0 0;";
+    backBtn.onclick = function() { chatModal.classList.remove('active'); if (chatUnsub) chatUnsub(); };
+    header.appendChild(backBtn);
+
+    // Avatar
+    var av = document.createElement('div');
+    av.style.cssText = 'width:44px;height:44px;border:3px solid #fff;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:20px;background:#333;cursor:pointer;';
+    if (friend.avatar) { av.innerHTML = '<img src="' + friend.avatar + '" style="width:100%;height:100%;object-fit:cover;" />'; }
+    else { av.textContent = '\uD83D\uDC64'; }
+    av.onclick = function() { viewProfile(friend); };
+    header.appendChild(av);
+
+    // Name (clickable for profile)
+    var nameEl = document.createElement('div');
+    nameEl.style.cssText = 'flex:1;font-size:18px;letter-spacing:-0.5px;cursor:pointer;';
+    nameEl.textContent = friend.displayName;
+    nameEl.onclick = function() { viewProfile(friend); };
+    header.appendChild(nameEl);
+
+    // Voice call btn
+    var voiceBtn = document.createElement('button');
+    voiceBtn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.5a16 16 0 0 0 5.59 5.59l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16.92z"></path></svg>';
+    voiceBtn.style.cssText = 'background:none;border:3px solid #fff;color:#fff;padding:6px 10px;cursor:pointer;margin-left:4px;';
+    voiceBtn.onclick = function() { startCall(friend, false); };
+    header.appendChild(voiceBtn);
+
+    // Video call btn
+    var videoBtn = document.createElement('button');
+    videoBtn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>';
+    videoBtn.style.cssText = 'background:none;border:3px solid #fff;color:#fff;padding:6px 10px;cursor:pointer;margin-left:4px;';
+    videoBtn.onclick = function() { startCall(friend, true); };
+    header.appendChild(videoBtn);
+
     chatModal.appendChild(header);
 
+    // ── MESSAGES ──
     var msgBox = document.createElement('div');
     msgBox.id = 'chatMsgs';
     msgBox.className = 'modal-content';
-    msgBox.style.cssText = 'display:flex;flex-direction:column;padding:20px;';
+    msgBox.style.cssText = 'display:flex;flex-direction:column;padding:16px;';
     chatModal.appendChild(msgBox);
 
+    // ── INPUT BAR ──
     var bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;border-top:3px solid #fff;flex-shrink:0;';
+    bar.style.cssText = 'display:flex;align-items:center;border-top:3px solid #fff;flex-shrink:0;min-height:56px;';
+
+    // Attach file btn
+    var fileBtn = document.createElement('button');
+    fileBtn.textContent = '+';
+    fileBtn.style.cssText = "background:#000;border:none;border-right:3px solid #fff;color:#fff;padding:0 16px;font-size:24px;cursor:pointer;height:100%;font-family:'Courier Prime',monospace;";
+    fileBtn.onclick = function() { document.getElementById('chatFileInput').click(); };
+    bar.appendChild(fileBtn);
+
+    var fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.id = 'chatFileInput';
+    fileInput.accept = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.txt';
+    fileInput.style.display = 'none';
+    fileInput.onchange = function() { sendFile(activeChatId, activeFriend, fileInput.files[0]); fileInput.value=''; };
+    bar.appendChild(fileInput);
+
+    // Text input
     var inp = document.createElement('input');
     inp.type = 'text';
     inp.id = 'chatInput';
     inp.placeholder = 'Type something...';
     inp.style.cssText = "flex:1;background:#000;border:none;padding:15px;color:#fff;font-family:'Courier Prime',monospace;font-size:16px;outline:none;";
-    inp.onkeydown = function(e) { if (e.key === 'Enter') sendMsg(chatId, friend); };
+    inp.onkeydown = function(e) { if (e.key === 'Enter') sendMsg(activeChatId, activeFriend); };
+    bar.appendChild(inp);
+
+    // Voice record btn
+    var voiceRecBtn = document.createElement('button');
+    voiceRecBtn.id = 'voiceRecBtn';
+    voiceRecBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>';
+    voiceRecBtn.style.cssText = 'background:#000;border:none;border-left:3px solid #fff;color:#fff;padding:0 14px;cursor:pointer;height:100%;';
+    voiceRecBtn.onmousedown = startRecording;
+    voiceRecBtn.onmouseup = function() { stopRecording(activeChatId, activeFriend); };
+    voiceRecBtn.ontouchstart = function(e) { e.preventDefault(); startRecording(); };
+    voiceRecBtn.ontouchend = function(e) { e.preventDefault(); stopRecording(activeChatId, activeFriend); };
+    bar.appendChild(voiceRecBtn);
+
+    // Send btn
     var sendBtn = document.createElement('button');
     sendBtn.textContent = '\u27A4';
-    sendBtn.style.cssText = "background:#fff;color:#000;border:none;border-left:3px solid #fff;padding:0 20px;font-family:'Courier Prime',monospace;font-size:18px;cursor:pointer;";
-    sendBtn.onclick = function() { sendMsg(chatId, friend); };
-    bar.appendChild(inp);
+    sendBtn.style.cssText = "background:#fff;color:#000;border:none;border-left:3px solid #fff;padding:0 18px;font-family:'Courier Prime',monospace;font-size:18px;cursor:pointer;height:100%;";
+    sendBtn.onclick = function() { sendMsg(activeChatId, activeFriend); };
     bar.appendChild(sendBtn);
+
     chatModal.appendChild(bar);
 
-    chatUnsub = db.collection('chats').doc(chatId).collection('messages')
+    // ── REAL-TIME MESSAGES ──
+    chatUnsub = db.collection('chats').doc(activeChatId).collection('messages')
         .orderBy('timestamp')
         .onSnapshot(function(snap) {
             msgBox.innerHTML = '';
@@ -557,25 +636,61 @@ function openChat(friend) {
                 msgBox.appendChild(empty);
                 return;
             }
-            snap.forEach(function(doc) {
-                var m = doc.data();
-                var mine = m.fromUid === currentUser.uid;
-                var wrap = document.createElement('div');
-                wrap.style.cssText = 'display:flex;flex-direction:column;align-items:' + (mine ? 'flex-end' : 'flex-start') + ';margin-bottom:14px;';
-                var bubble = document.createElement('div');
-                bubble.style.cssText = 'max-width:75%;border:3px solid #fff;padding:10px 14px;background:' + (mine ? '#fff' : '#000') + ';color:' + (mine ? '#000' : '#fff') + ";font-family:'Courier Prime',monospace;font-size:15px;word-break:break-word;";
-                bubble.textContent = m.text;
-                var time = document.createElement('div');
-                time.style.cssText = 'font-size:11px;color:#666;margin-top:4px;';
-                time.textContent = m.timestamp ? new Date(m.timestamp.toDate()).toLocaleTimeString() : '';
-                wrap.appendChild(bubble);
-                wrap.appendChild(time);
-                msgBox.appendChild(wrap);
-            });
+            snap.forEach(function(doc) { msgBox.appendChild(buildMsgEl(doc.data())); });
             msgBox.scrollTop = msgBox.scrollHeight;
         });
 
+    // Listen for incoming calls
+    listenForCall(friend);
+
     setTimeout(function() { inp.focus(); }, 100);
+}
+
+function buildMsgEl(m) {
+    var mine = m.fromUid === currentUser.uid;
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:' + (mine ? 'flex-end' : 'flex-start') + ';margin-bottom:14px;';
+
+    var bubble = document.createElement('div');
+    bubble.style.cssText = 'max-width:75%;border:3px solid #fff;padding:10px 14px;background:' + (mine ? '#fff' : '#000') + ';color:' + (mine ? '#000' : '#fff') + ";font-family:'Courier Prime',monospace;font-size:15px;word-break:break-word;";
+
+    if (m.type === 'image') {
+        var img = document.createElement('img');
+        img.src = m.data;
+        img.style.cssText = 'max-width:220px;max-height:220px;display:block;cursor:pointer;';
+        img.onclick = function() { window.open(m.data); };
+        bubble.style.padding = '4px';
+        bubble.appendChild(img);
+    } else if (m.type === 'video') {
+        var vid = document.createElement('video');
+        vid.src = m.data;
+        vid.controls = true;
+        vid.style.cssText = 'max-width:220px;display:block;';
+        bubble.style.padding = '4px';
+        bubble.appendChild(vid);
+    } else if (m.type === 'audio') {
+        var aud = document.createElement('audio');
+        aud.src = m.data;
+        aud.controls = true;
+        aud.style.cssText = 'max-width:220px;';
+        bubble.appendChild(aud);
+    } else if (m.type === 'file') {
+        var link = document.createElement('a');
+        link.href = m.data;
+        link.download = m.fileName || 'file';
+        link.style.cssText = 'color:' + (mine ? '#000' : '#fff') + ';text-decoration:underline;';
+        link.textContent = '\uD83D\uDCC4 ' + (m.fileName || 'File');
+        bubble.appendChild(link);
+    } else {
+        bubble.textContent = m.text || '';
+    }
+
+    var time = document.createElement('div');
+    time.style.cssText = 'font-size:11px;color:#666;margin-top:4px;';
+    time.textContent = m.timestamp ? new Date(m.timestamp.toDate()).toLocaleTimeString() : '';
+    wrap.appendChild(bubble);
+    wrap.appendChild(time);
+    return wrap;
 }
 
 async function sendMsg(chatId, friend) {
@@ -585,14 +700,330 @@ async function sendMsg(chatId, friend) {
     if (!text) return;
     inp.value = '';
     await db.collection('chats').doc(chatId).collection('messages').add({
-        text: text, fromUid: currentUser.uid,
+        type: 'text', text: text, fromUid: currentUser.uid,
         fromName: currentProfile.displayName,
         timestamp: firebase.firestore.FieldValue.serverTimestamp()
     });
-    var preview = { lastMsg: text };
-    db.collection('users').doc(currentUser.uid).collection('friends').doc(friend.uid).update(preview);
-    db.collection('users').doc(friend.uid).collection('friends').doc(currentUser.uid).update(preview).catch(function(){});
+    updateLastMsg(friend, text);
 }
+
+async function sendFile(chatId, friend, file) {
+    if (!file) return;
+    if (file.size > 900000) { showNotification('File too big (max ~900KB)'); return; }
+    showNotification('Sending...');
+    var reader = new FileReader();
+    reader.onload = async function(e) {
+        var type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'file';
+        await db.collection('chats').doc(chatId).collection('messages').add({
+            type: type, data: e.target.result,
+            fileName: file.name,
+            fromUid: currentUser.uid, fromName: currentProfile.displayName,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        updateLastMsg(friend, type === 'image' ? '📷 Image' : type === 'video' ? '🎥 Video' : type === 'audio' ? '🎤 Audio' : '📄 ' + file.name);
+    };
+    reader.readAsDataURL(file);
+}
+
+function startRecording() {
+    if (isRecording) return;
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        isRecording = true;
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
+        mediaRecorder.start();
+        var btn = document.getElementById('voiceRecBtn');
+        if (btn) btn.style.background = '#f00';
+        showNotification('Recording... release to send');
+    }).catch(function() { showNotification('Microphone access denied'); });
+}
+
+function stopRecording(chatId, friend) {
+    if (!isRecording || !mediaRecorder) return;
+    isRecording = false;
+    mediaRecorder.stop();
+    mediaRecorder.onstop = function() {
+        var blob = new Blob(audioChunks, { type: 'audio/webm' });
+        mediaRecorder.stream.getTracks().forEach(function(t) { t.stop(); });
+        var btn = document.getElementById('voiceRecBtn');
+        if (btn) btn.style.background = '#000';
+        if (blob.size > 900000) { showNotification('Voice message too long'); return; }
+        var reader = new FileReader();
+        reader.onload = async function(e) {
+            await db.collection('chats').doc(chatId).collection('messages').add({
+                type: 'audio', data: e.target.result,
+                fromUid: currentUser.uid, fromName: currentProfile.displayName,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            updateLastMsg(friend, '\uD83C\uDFA4 Voice message');
+        };
+        reader.readAsDataURL(blob);
+    };
+}
+
+function updateLastMsg(friend, preview) {
+    var p = { lastMsg: preview };
+    db.collection('users').doc(currentUser.uid).collection('friends').doc(friend.uid).update(p);
+    db.collection('users').doc(friend.uid).collection('friends').doc(currentUser.uid).update(p).catch(function(){});
+}
+
+// ── PROFILE VIEW ─────────────────────────────────────────
+async function viewProfile(friend) {
+    var doc = await db.collection('users').doc(friend.uid).get();
+    var data = doc.data();
+    var modal = document.getElementById('profileViewModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'profileViewModal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = '';
+    modal.classList.add('active');
+
+    var header = document.createElement('div');
+    header.className = 'modal-header';
+    header.innerHTML = '<span>Profile</span>';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'modal-close';
+    closeBtn.textContent = 'X';
+    closeBtn.onclick = function() { modal.classList.remove('active'); };
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var content = document.createElement('div');
+    content.className = 'modal-content';
+    content.style.cssText = 'display:flex;flex-direction:column;align-items:center;padding:40px 20px;gap:20px;';
+
+    var av = document.createElement('div');
+    av.style.cssText = 'width:100px;height:100px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:48px;background:#333;';
+    if (data.avatar) { av.innerHTML = '<img src="' + data.avatar + '" style="width:100%;height:100%;object-fit:cover;" />'; }
+    else { av.textContent = '\uD83D\uDC64'; }
+    content.appendChild(av);
+
+    var rows = [
+        ['Display Name', data.displayName || '-'],
+        ['Username', '@' + (data.username || '-')],
+        ['Bio', data.bio || 'No bio yet']
+    ];
+    rows.forEach(function(row) {
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'width:100%;border:3px solid #fff;padding:15px;';
+        var label = document.createElement('div');
+        label.style.cssText = 'font-size:12px;color:#666;margin-bottom:6px;letter-spacing:-0.5px;';
+        label.textContent = row[0];
+        var val = document.createElement('div');
+        val.style.cssText = 'font-size:16px;letter-spacing:-0.5px;word-break:break-word;';
+        val.textContent = row[1];
+        wrap.appendChild(label);
+        wrap.appendChild(val);
+        content.appendChild(wrap);
+    });
+
+    modal.appendChild(content);
+}
+
+// ── CALLS (WebRTC) ────────────────────────────────────────
+async function startCall(friend, withVideo) {
+    showNotification('Calling ' + friend.displayName + '...');
+    var callId = activeChatId;
+
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo }).catch(function(e) {
+        showNotification('Camera/mic access denied'); return null;
+    });
+    if (!localStream) return;
+
+    peerConnection = new RTCPeerConnection(ICE_SERVERS);
+    localStream.getTracks().forEach(function(t) { peerConnection.addTrack(t, localStream); });
+
+    openCallModal(friend, withVideo, true);
+
+    var localVideo = document.getElementById('localVideo');
+    if (localVideo && withVideo) localVideo.srcObject = localStream;
+
+    peerConnection.ontrack = function(e) {
+        var remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo) remoteVideo.srcObject = e.streams[0];
+    };
+
+    peerConnection.onicecandidate = function(e) {
+        if (e.candidate) {
+            db.collection('calls').doc(callId).collection('callerCandidates').add(e.candidate.toJSON());
+        }
+    };
+
+    var offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    await db.collection('calls').doc(callId).set({
+        offer: { type: offer.type, sdp: offer.sdp },
+        callerId: currentUser.uid,
+        calleeId: friend.uid,
+        withVideo: withVideo,
+        status: 'calling'
+    });
+
+    // Listen for answer
+    db.collection('calls').doc(callId).onSnapshot(async function(snap) {
+        var data = snap.data();
+        if (data && data.answer && !peerConnection.currentRemoteDescription) {
+            var answerDesc = new RTCSessionDescription(data.answer);
+            await peerConnection.setRemoteDescription(answerDesc);
+        }
+        if (data && data.status === 'ended') { endCall(); }
+    });
+
+    // Listen for callee ICE candidates
+    db.collection('calls').doc(callId).collection('calleeCandidates').onSnapshot(function(snap) {
+        snap.docChanges().forEach(async function(change) {
+            if (change.type === 'added') {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
+        });
+    });
+
+    // Notify callee via their user doc
+    db.collection('users').doc(friend.uid).update({
+        incomingCall: { callId: callId, callerName: currentProfile.displayName, callerAvatar: currentProfile.avatar || '', withVideo: withVideo }
+    });
+}
+
+function listenForCall(friend) {
+    db.collection('users').doc(currentUser.uid).onSnapshot(async function(snap) {
+        var data = snap.data();
+        if (!data || !data.incomingCall) return;
+        var call = data.incomingCall;
+        // Clear it immediately to avoid re-triggering
+        db.collection('users').doc(currentUser.uid).update({ incomingCall: firebase.firestore.FieldValue.delete() });
+        showIncomingCall(call);
+    });
+}
+
+function showIncomingCall(call) {
+    var modal = document.createElement('div');
+    modal.id = 'incomingCallModal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;border:3px solid #fff;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;';
+    modal.innerHTML = '<div style="font-size:24px;letter-spacing:-1px;">' + call.callerName + '</div>' +
+        '<div style="color:#aaa;font-size:16px;">Incoming ' + (call.withVideo ? 'video' : 'voice') + ' call...</div>' +
+        '<div style="display:flex;gap:20px;">' +
+        '<button onclick="acceptCall(\'' + call.callId + '\',' + call.withVideo + ',this.closest(\'[id=incomingCallModal]\'))" style="padding:15px 30px;background:#0f0;border:3px solid #fff;color:#000;font-family:\'Courier Prime\',monospace;font-size:16px;cursor:pointer;">Accept</button>' +
+        '<button onclick="rejectCall(\'' + call.callId + '\',this.closest(\'[id=incomingCallModal]\'))" style="padding:15px 30px;background:#f00;border:3px solid #fff;color:#fff;font-family:\'Courier Prime\',monospace;font-size:16px;cursor:pointer;">Reject</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+}
+
+async function acceptCall(callId, withVideo, incomingModal) {
+    if (incomingModal) incomingModal.remove();
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo }).catch(function() { return null; });
+    if (!localStream) return;
+
+    peerConnection = new RTCPeerConnection(ICE_SERVERS);
+    localStream.getTracks().forEach(function(t) { peerConnection.addTrack(t, localStream); });
+
+    openCallModal({ displayName: '', uid: '' }, withVideo, false);
+
+    var localVideo = document.getElementById('localVideo');
+    if (localVideo && withVideo) localVideo.srcObject = localStream;
+
+    peerConnection.ontrack = function(e) {
+        var remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo) remoteVideo.srcObject = e.streams[0];
+    };
+
+    peerConnection.onicecandidate = function(e) {
+        if (e.candidate) {
+            db.collection('calls').doc(callId).collection('calleeCandidates').add(e.candidate.toJSON());
+        }
+    };
+
+    var callDoc = await db.collection('calls').doc(callId).get();
+    var callData = callDoc.data();
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(callData.offer));
+
+    var answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    await db.collection('calls').doc(callId).update({ answer: { type: answer.type, sdp: answer.sdp } });
+
+    db.collection('calls').doc(callId).collection('callerCandidates').onSnapshot(function(snap) {
+        snap.docChanges().forEach(async function(change) {
+            if (change.type === 'added') {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
+        });
+    });
+}
+
+function rejectCall(callId, modal) {
+    if (modal) modal.remove();
+    db.collection('calls').doc(callId).update({ status: 'ended' }).catch(function(){});
+}
+
+function openCallModal(friend, withVideo, isCaller) {
+    var existing = document.getElementById('callModal');
+    if (existing) existing.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'callModal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;border:3px solid #fff;z-index:2000;display:flex;flex-direction:column;';
+
+    var hd = document.createElement('div');
+    hd.style.cssText = 'padding:20px;border-bottom:3px solid #fff;font-size:20px;letter-spacing:-0.5px;display:flex;justify-content:space-between;align-items:center;';
+    hd.innerHTML = '<span>' + (friend.displayName || 'Call') + '</span>';
+    modal.appendChild(hd);
+
+    var videoArea = document.createElement('div');
+    videoArea.style.cssText = 'flex:1;position:relative;background:#111;display:flex;align-items:center;justify-content:center;';
+
+    if (withVideo) {
+        var remoteVid = document.createElement('video');
+        remoteVid.id = 'remoteVideo';
+        remoteVid.autoplay = true;
+        remoteVid.playsinline = true;
+        remoteVid.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+        videoArea.appendChild(remoteVid);
+
+        var localVid = document.createElement('video');
+        localVid.id = 'localVideo';
+        localVid.autoplay = true;
+        localVid.playsinline = true;
+        localVid.muted = true;
+        localVid.style.cssText = 'position:absolute;bottom:20px;right:20px;width:120px;height:90px;border:3px solid #fff;object-fit:cover;background:#000;';
+        videoArea.appendChild(localVid);
+    } else {
+        var icon = document.createElement('div');
+        icon.style.cssText = 'font-size:80px;';
+        icon.textContent = '\uD83D\uDCDE';
+        videoArea.appendChild(icon);
+        var remoteAud = document.createElement('audio');
+        remoteAud.id = 'remoteVideo';
+        remoteAud.autoplay = true;
+        videoArea.appendChild(remoteAud);
+    }
+
+    modal.appendChild(videoArea);
+
+    var controls = document.createElement('div');
+    controls.style.cssText = 'display:flex;justify-content:center;gap:20px;padding:20px;border-top:3px solid #fff;flex-shrink:0;';
+
+    var endBtn = document.createElement('button');
+    endBtn.textContent = 'End Call';
+    endBtn.style.cssText = "padding:15px 30px;background:#f00;border:3px solid #fff;color:#fff;font-family:'Courier Prime',monospace;font-size:16px;cursor:pointer;letter-spacing:-0.5px;";
+    endBtn.onclick = function() { endCall(); };
+    controls.appendChild(endBtn);
+
+    modal.appendChild(controls);
+    document.body.appendChild(modal);
+}
+
+function endCall() {
+    if (peerConnection) { peerConnection.close(); peerConnection = null; }
+    if (localStream) { localStream.getTracks().forEach(function(t) { t.stop(); }); localStream = null; }
+    if (activeChatId) { db.collection('calls').doc(activeChatId).update({ status: 'ended' }).catch(function(){}); }
+    var modal = document.getElementById('callModal');
+    if (modal) modal.remove();
+}
+
 
 // ── FEED ──────────────────────────────────────────────────
 async function openSocialFeed() {
