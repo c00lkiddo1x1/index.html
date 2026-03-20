@@ -181,11 +181,64 @@
 </div>
 <div class="modal" id="settingsModal">
     <div class="modal-header"><span>Settings</span><button class="modal-close" onclick="closeModal('settingsModal')">X</button></div>
-    <div class="modal-content">
+    <div class="modal-content" style="padding:0;">
+
+        <!-- SECTION: Account -->
+        <div style="padding:12px 20px;border-bottom:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">ACCOUNT</div>
+        <div class="settings-option"><div class="settings-label">Username<div id="settingsUsernameDisplay" style="font-size:14px;color:#aaa;margin-top:2px;">@username</div></div><button class="btn" onclick="viewOwnProfile()" style="width:160px;">View Profile</button></div>
         <div class="settings-option"><div class="settings-label">Display Name</div><input type="text" class="settings-input" id="settingsDisplayName" onchange="updateDisplayName()"/></div>
-        <div class="settings-option"><div class="settings-label">Change Avatar</div><button class="btn" onclick="document.getElementById('settingsAvatarInput').click()" style="width:200px;">Upload</button></div>
-        <div class="settings-option"><div class="settings-label" style="color:#f55;">Logout</div><button class="btn" onclick="handleLogout()" style="width:200px;border-color:#f55;color:#f55;">Logout</button></div>
+        <div class="settings-option"><div class="settings-label">Change Avatar</div><button class="btn" onclick="document.getElementById('settingsAvatarInput').click()" style="width:160px;">Upload</button></div>
+        <div class="settings-option"><div class="settings-label">Private Account<div style="font-size:12px;color:#666;">Hides avatar, bio, shows as @Private Owl44</div></div><button class="btn s-toggle" id="tog_privateAccount" onclick="toggleSetting('privateAccount')" style="width:80px;">OFF</button></div>
+        <div class="settings-option"><div class="settings-label">Friend Requests</div><button class="btn s-toggle" id="tog_friendRequests" onclick="toggleSetting('friendRequests')" style="width:80px;">ON</button></div>
+        <div class="settings-option"><div class="settings-label">Blocked List</div><button class="btn" onclick="openBlockedList()" style="width:160px;">View</button></div>
         <input type="file" id="settingsAvatarInput" accept="image/*" style="display:none;" onchange="handleSettingsAvatar()"/>
+
+        <!-- SECTION: Appearance - Outline -->
+        <div style="padding:12px 20px;border-bottom:3px solid #fff;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">OUTLINE</div>
+        <div class="settings-option"><div class="settings-label">Outline Color</div><input type="color" id="set_outlineColor" value="#ffffff" oninput="applySetting('outlineColor',this.value)" style="width:80px;height:40px;background:#000;border:3px solid #fff;cursor:pointer;padding:2px;"/></div>
+        <div class="settings-option"><div class="settings-label">RGB Outline</div><button class="btn s-toggle" id="tog_rgbOutline" onclick="toggleSetting('rgbOutline')" style="width:80px;">OFF</button></div>
+
+        <!-- SECTION: Background -->
+        <div style="padding:12px 20px;border-bottom:3px solid #fff;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">BACKGROUND</div>
+        <div class="settings-option"><div class="settings-label">Background Color</div><input type="color" id="set_bgColor" value="#000000" oninput="applySetting('bgColor',this.value)" style="width:80px;height:40px;background:#000;border:3px solid #fff;cursor:pointer;padding:2px;"/></div>
+        <div class="settings-option"><div class="settings-label">Background Image</div><button class="btn" onclick="document.getElementById('set_bgImgInput').click()" style="width:160px;">Upload</button></div>
+        <input type="file" id="set_bgImgInput" accept="image/*" style="display:none;" onchange="applyBgImg(this)"/>
+        <div class="settings-option"><div class="settings-label">RGB Background</div><button class="btn s-toggle" id="tog_rgbBg" onclick="toggleSetting('rgbBg')" style="width:80px;">OFF</button></div>
+
+        <!-- SECTION: Stars -->
+        <div style="padding:12px 20px;border-bottom:3px solid #fff;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">STARS</div>
+        <div class="settings-option"><div class="settings-label">Stars</div><button class="btn s-toggle" id="tog_stars" onclick="toggleSetting('stars')" style="width:80px;">ON</button></div>
+        <div class="settings-option"><div class="settings-label">Stars Color</div><input type="color" id="set_starColor" value="#ffffff" oninput="applySetting('starColor',this.value)" style="width:80px;height:40px;background:#000;border:3px solid #fff;cursor:pointer;padding:2px;"/></div>
+        <div class="settings-option"><div class="settings-label">Stars Speed<div id="starSpeedVal" style="font-size:12px;color:#666;">1x</div></div><input type="range" id="set_starSpeed" min="1" max="20" value="1" oninput="applySetting('starSpeed',this.value)" style="width:160px;accent-color:#fff;"/></div>
+
+        <!-- SECTION: Font -->
+        <div style="padding:12px 20px;border-bottom:3px solid #fff;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">FONT</div>
+        <div class="settings-option"><div class="settings-label">Text Font</div>
+            <select id="set_font" onchange="applySetting('font',this.value)" style="background:#000;border:3px solid #fff;color:#fff;padding:8px;font-family:'Courier Prime',monospace;font-size:14px;width:160px;">
+                <option value="'Courier Prime',monospace">Courier Prime</option>
+                <option value="monospace">Monospace</option>
+                <option value="'Arial',sans-serif">Arial</option>
+                <option value="'Georgia',serif">Georgia</option>
+                <option value="'Impact',sans-serif">Impact</option>
+                <option value="'Comic Sans MS',cursive">Comic Sans</option>
+                <option value="'Trebuchet MS',sans-serif">Trebuchet</option>
+            </select>
+        </div>
+        <div class="settings-option"><div class="settings-label">RGB Font</div><button class="btn s-toggle" id="tog_rgbFont" onclick="toggleSetting('rgbFont')" style="width:80px;">OFF</button></div>
+
+        <!-- SECTION: Buttons -->
+        <div style="padding:12px 20px;border-bottom:3px solid #fff;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">BUTTONS</div>
+        <div class="settings-option"><div class="settings-label">Button Background</div><input type="color" id="set_btnBg" value="#000000" oninput="applySetting('btnBg',this.value)" style="width:80px;height:40px;background:#000;border:3px solid #fff;cursor:pointer;padding:2px;"/></div>
+        <div class="settings-option"><div class="settings-label">Button Image</div><button class="btn" onclick="document.getElementById('set_btnImgInput').click()" style="width:160px;">Upload</button></div>
+        <input type="file" id="set_btnImgInput" accept="image/*" style="display:none;" onchange="applyBtnImg(this)"/>
+        <div class="settings-option"><div class="settings-label">Button Outline</div><input type="color" id="set_btnOutline" value="#ffffff" oninput="applySetting('btnOutline',this.value)" style="width:80px;height:40px;background:#000;border:3px solid #fff;cursor:pointer;padding:2px;"/></div>
+        <div class="settings-option"><div class="settings-label">Button RGB Background</div><button class="btn s-toggle" id="tog_rgbBtn" onclick="toggleSetting('rgbBtn')" style="width:80px;">OFF</button></div>
+
+        <!-- SECTION: Info -->
+        <div style="padding:12px 20px;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">INFO</div>
+        <div class="settings-option"><div class="settings-label">Version</div><div style="color:#666;font-size:14px;">0.0.4</div></div>
+        <div class="settings-option"><div class="settings-label">Reset Settings<div style="font-size:12px;color:#666;">Restore all appearance defaults</div></div><button class="btn" onclick="resetSettings()" style="width:160px;border-color:#fa0;color:#fa0;">Reset</button></div>
+        <div class="settings-option"><div class="settings-label" style="color:#f55;">Logout</div><button class="btn" onclick="handleLogout()" style="width:160px;border-color:#f55;color:#f55;">Logout</button></div>
     </div>
 </div>
 <script>
@@ -302,7 +355,11 @@ auth.onAuthStateChanged(async function(user){
         }
     } else {currentUser=null;currentProfile=null;showPage('loginPage');}
 });
-function showPage(id){document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});document.getElementById(id).classList.add('active');}
+function showPage(id){
+    document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
+    document.getElementById(id).classList.add('active');
+    if(id==='loginPage'){setBtn('loginBtn',false);setBtn('registerBtn',false);}
+}
 
 // ── PIN ──────────────────────────────────────────────────
 function handlePinInput(e,dId,rId){var d=document.getElementById(dId),r=document.getElementById(rId),raw=d.value,state=pinStates[dId]||'',ns='';for(var i=0;i<raw.length;i++)ns+=(raw[i]==='\u2022')?(state[i]||''):raw[i];pinStates[dId]=ns;r.value=ns;if(!pinVisible)d.value='\u2022'.repeat(ns.length);}
@@ -426,11 +483,36 @@ async function searchUsers(){
         el.style.display='block';
         snap.forEach(function(doc){
             var uname=doc.id;
+            var uid=doc.data().uid;
             if(uname===(currentProfile.username||''))return;
+
             var row=document.createElement('div');
-            row.style.cssText="padding:10px 14px;border-top:3px solid #fff;cursor:pointer;font-family:'Courier Prime',monospace;font-size:15px;background:#000;color:#fff;";
-            row.textContent='@'+uname;
-            row.onmousedown=function(e){e.preventDefault();document.getElementById('addFriendInput').value=uname;el.style.display='none';};
+            row.style.cssText="display:flex;align-items:stretch;border-top:3px solid #fff;background:#000;font-family:'Courier Prime',monospace;font-size:15px;";
+
+            // Left: username — click to view profile
+            var nameCell=document.createElement('div');
+            nameCell.style.cssText="flex:1;padding:10px 14px;cursor:pointer;color:#fff;border-right:3px solid #fff;";
+            nameCell.textContent='@'+uname;
+            nameCell.title='Click to view profile';
+            nameCell.onmousedown=function(e){
+                e.preventDefault();
+                // View their profile
+                viewProfile({uid:uid,displayName:uname});
+            };
+
+            // Right: "tab" — click to select into input
+            var tabCell=document.createElement('div');
+            tabCell.style.cssText="padding:10px 16px;cursor:pointer;color:#aaa;white-space:nowrap;font-size:13px;display:flex;align-items:center;";
+            tabCell.textContent='select \u21E5';
+            tabCell.title='Click to select user';
+            tabCell.onmousedown=function(e){
+                e.preventDefault();
+                document.getElementById('addFriendInput').value=uname;
+                el.style.display='none';
+            };
+
+            row.appendChild(nameCell);
+            row.appendChild(tabCell);
             el.appendChild(row);
         });
     },200);
@@ -445,6 +527,11 @@ async function addFriend(){
     var udoc=await db.collection('usernames').doc(username).get();
     if(!udoc.exists){showNotification("User doesn't exist!");return;}
     var theirUid=udoc.data().uid;
+    // Check friend requests setting on their account
+    var theirUserDoc=await db.collection('users').doc(theirUid).get();
+    var theirSettings=null;
+    // We can't read their localStorage so we store friendRequests pref in Firestore too
+    if(theirUserDoc.exists&&theirUserDoc.data().friendRequestsOff){showNotification('This user has disabled friend requests.');return;}
     var blocked=await db.collection('users').doc(theirUid).collection('blocked').doc(currentUser.uid).get();
     if(blocked.exists){showNotification("Can't add that user.");return;}
     var ex=await db.collection('users').doc(currentUser.uid).collection('friends').doc(theirUid).get();
@@ -566,7 +653,7 @@ function buildMsgEl(m){
     wrap.appendChild(bubble);wrap.appendChild(time);return wrap;
 }
 async function sendMsg(chatId,friend){var inp=document.getElementById('chatInput');if(!inp)return;var text=inp.value.trim();if(!text)return;inp.value='';await db.collection('chats').doc(chatId).collection('messages').add({type:'text',text:text,fromUid:currentUser.uid,fromName:currentProfile.displayName,timestamp:firebase.firestore.FieldValue.serverTimestamp()});updateLastMsg(friend,text);}
-async function sendFile(chatId,friend,file){if(!file)return;if(file.size>900000){showNotification('File too big (max ~900KB)');return;}showNotification('Sending...');var reader=new FileReader();reader.onload=async function(e){var type=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'file';await db.collection('chats').doc(chatId).collection('messages').add({type:type,data:e.target.result,fileName:file.name,fromUid:currentUser.uid,fromName:currentProfile.displayName,timestamp:firebase.firestore.FieldValue.serverTimestamp()});updateLastMsg(friend,type==='image'?'[image]':type==='video'?'[video]':type==='audio'?'[voice]':'[file] '+file.name);};reader.readAsDataURL(file);}
+async function sendFile(chatId,friend,file){if(!file)return;if(file.size>10000000){showNotification('File too big (max 10MB)');return;}showNotification('Sending...');var reader=new FileReader();reader.onload=async function(e){var type=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'file';await db.collection('chats').doc(chatId).collection('messages').add({type:type,data:e.target.result,fileName:file.name,fromUid:currentUser.uid,fromName:currentProfile.displayName,timestamp:firebase.firestore.FieldValue.serverTimestamp()});updateLastMsg(friend,type==='image'?'[image]':type==='video'?'[video]':type==='audio'?'[voice]':'[file] '+file.name);};reader.readAsDataURL(file);}
 function startRecording(){if(isRecording)return;navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){isRecording=true;audioChunks=[];mediaRecorder=new MediaRecorder(stream);mediaRecorder.ondataavailable=function(e){audioChunks.push(e.data);};mediaRecorder.start();var btn=document.getElementById('voiceRecBtn');if(btn)btn.style.background='#f00';showNotification('Recording... release to send');}).catch(function(){showNotification('Mic access denied');});}
 function stopRecording(chatId,friend){if(!isRecording||!mediaRecorder)return;isRecording=false;mediaRecorder.stop();mediaRecorder.onstop=function(){var blob=new Blob(audioChunks,{type:'audio/webm'});mediaRecorder.stream.getTracks().forEach(function(t){t.stop();});var btn=document.getElementById('voiceRecBtn');if(btn)btn.style.background='#000';if(blob.size>900000){showNotification('Voice message too long');return;}var reader=new FileReader();reader.onload=async function(e){await db.collection('chats').doc(chatId).collection('messages').add({type:'audio',data:e.target.result,fromUid:currentUser.uid,fromName:currentProfile.displayName,timestamp:firebase.firestore.FieldValue.serverTimestamp()});updateLastMsg(friend,'[voice]');};reader.readAsDataURL(blob);};}
 function updateLastMsg(friend,preview){var p={lastMsg:preview};db.collection('users').doc(currentUser.uid).collection('friends').doc(friend.uid).update(p);db.collection('users').doc(friend.uid).collection('friends').doc(currentUser.uid).update(p).catch(function(){});}
@@ -574,6 +661,9 @@ function updateLastMsg(friend,preview){var p={lastMsg:preview};db.collection('us
 // ── PROFILE VIEW ─────────────────────────────────────────
 async function viewProfile(friend){
     var doc=await db.collection('users').doc(friend.uid).get();var data=doc.data();
+    // Apply private account masking
+    var isPrivate=data.privateAccount===true;
+    if(isPrivate){data={displayName:'Private Owl44',username:'private_owl44',bio:'',avatar:'',tags:data.tags||[]};}
     var modal=document.getElementById('profileViewModal');
     if(!modal){modal=document.createElement('div');modal.id='profileViewModal';modal.className='modal';document.body.appendChild(modal);}
     modal.innerHTML='';modal.classList.add('active');
@@ -677,7 +767,25 @@ async function openSocialFeed(){
     var fc=document.getElementById('feedContent');fc.innerHTML='<div style="color:#666;padding:20px;text-align:center;">Loading...</div>';
     var snap=await db.collection('posts').orderBy('timestamp','desc').limit(30).get();fc.innerHTML='';
     if(snap.empty){fc.innerHTML='<div style="padding:20px;text-align:center;color:#666;">No posts yet!</div>';return;}
-    snap.forEach(function(doc){var p=doc.data();var item=document.createElement('div');item.className='feed-item';item.innerHTML='<div class="feed-user">'+p.displayName+'</div><div style="font-size:12px;color:#666;margin-bottom:8px;">@'+p.username+'</div><div class="feed-content">'+p.text+'</div>';fc.appendChild(item);});
+    snap.forEach(function(doc){
+        var p=doc.data();
+        var item=document.createElement('div');item.className='feed-item';
+        var nameEl=document.createElement('div');nameEl.className='feed-user';
+        nameEl.style.cssText='cursor:pointer;text-decoration:underline;display:inline-block;';
+        nameEl.textContent=p.displayName;
+        nameEl.onclick=async function(){
+            // Look up their uid from username
+            var udoc=await db.collection('usernames').doc((p.username||'').toLowerCase()).get();
+            if(udoc.exists) viewProfile({uid:udoc.data().uid,displayName:p.displayName});
+            else showNotification('Profile not found');
+        };
+        var subEl=document.createElement('div');subEl.style.cssText='font-size:12px;color:#666;margin-bottom:8px;cursor:pointer;';
+        subEl.textContent='@'+p.username;
+        subEl.onclick=nameEl.onclick;
+        var textEl=document.createElement('div');textEl.className='feed-content';textEl.textContent=p.text;
+        item.appendChild(nameEl);item.appendChild(subEl);item.appendChild(textEl);
+        fc.appendChild(item);
+    });
 }
 async function uploadPost(){
     var text=document.getElementById('postText').value.trim();if(!text){showNotification('Write something first!');return;}
@@ -687,7 +795,16 @@ async function uploadPost(){
 }
 
 // ── SETTINGS ─────────────────────────────────────────────
-function openSettings(){document.getElementById('settingsDisplayName').value=currentProfile.displayName||'';document.getElementById('settingsModal').classList.add('active');}
+function openSettings(){
+    document.getElementById('settingsDisplayName').value=currentProfile.displayName||'';
+    var unEl=document.getElementById('settingsUsernameDisplay');
+    if(unEl) unEl.textContent='@'+(currentProfile.username||'');
+    loadSettingsUI();
+    document.getElementById('settingsModal').classList.add('active');
+}
+function viewOwnProfile(){
+    viewProfile({uid:currentUser.uid, displayName:currentProfile.displayName});
+}
 async function updateDisplayName(){var name=document.getElementById('settingsDisplayName').value.trim();if(!name)return;await db.collection('users').doc(currentUser.uid).update({displayName:name});currentProfile.displayName=name;showNotification('Name updated!');}
 async function handleSettingsAvatar(){
     var file=document.getElementById('settingsAvatarInput').files[0];if(!file)return;
@@ -696,12 +813,216 @@ async function handleSettingsAvatar(){
         var avatar=e.target.result;
         await db.collection('users').doc(currentUser.uid).update({avatar:avatar});
         currentProfile.avatar=avatar;
-        // Push to all friends so their chat list updates immediately
         var fsnap=await db.collection('users').doc(currentUser.uid).collection('friends').get();
         fsnap.forEach(function(doc){db.collection('users').doc(doc.id).collection('friends').doc(currentUser.uid).update({avatar:avatar}).catch(function(){});});
         showNotification('Avatar updated!');
     };
     r.readAsDataURL(file);
+}
+
+// ── SETTINGS SYSTEM ───────────────────────────────────────
+var S = {}; // current settings object
+var rgbIntervals = {};
+
+var S_DEFAULTS = {
+    outlineColor:'#ffffff', rgbOutline:false,
+    bgColor:'#000000', bgImg:'', rgbBg:false,
+    starColor:'#ffffff', stars:true, starSpeed:1,
+    font:"'Courier Prime',monospace", rgbFont:false,
+    btnBg:'#000000', btnImg:'', btnOutline:'#ffffff', rgbBtn:false,
+    privateAccount:false, friendRequests:true
+};
+
+function loadSettings(){
+    try{ S=JSON.parse(localStorage.getItem('usen_settings')||'{}'); }catch(e){ S={}; }
+    Object.keys(S_DEFAULTS).forEach(function(k){ if(S[k]===undefined) S[k]=S_DEFAULTS[k]; });
+    applyAllSettings();
+}
+
+function saveSettings(){ localStorage.setItem('usen_settings',JSON.stringify(S)); }
+
+function loadSettingsUI(){
+    document.getElementById('set_outlineColor').value=S.outlineColor;
+    document.getElementById('set_bgColor').value=S.bgColor;
+    document.getElementById('set_starColor').value=S.starColor;
+    document.getElementById('set_starSpeed').value=S.starSpeed;
+    document.getElementById('starSpeedVal').textContent=S.starSpeed+'x';
+    document.getElementById('set_font').value=S.font;
+    document.getElementById('set_btnBg').value=S.btnBg;
+    document.getElementById('set_btnOutline').value=S.btnOutline;
+    ['rgbOutline','rgbBg','stars','rgbFont','rgbBtn','privateAccount','friendRequests'].forEach(function(k){
+        var el=document.getElementById('tog_'+k);
+        if(el) el.textContent=S[k]?'ON':'OFF';
+    });
+}
+
+function applySetting(key,val){
+    if(val==='true'||val===true) val=true;
+    else if(val==='false'||val===false) val=false;
+    else if(!isNaN(val)&&val!=='') val=Number(val);
+    S[key]=val;
+    saveSettings();
+    applyAllSettings();
+    if(key==='starSpeed'){ document.getElementById('starSpeedVal').textContent=val+'x'; }
+}
+
+function toggleSetting(key){
+    S[key]=!S[key];
+    var el=document.getElementById('tog_'+key);
+    if(el) el.textContent=S[key]?'ON':'OFF';
+    saveSettings();
+    // Sync certain prefs to Firestore so others can read them
+    if(key==='friendRequests'&&currentUser){
+        db.collection('users').doc(currentUser.uid).update({friendRequestsOff:!S[key]}).catch(function(){});
+    }
+    if(key==='privateAccount'&&currentUser){
+        db.collection('users').doc(currentUser.uid).update({privateAccount:S[key]}).catch(function(){});
+    }
+    applyAllSettings();
+}
+
+function applyBgImg(input){
+    var file=input.files[0]; if(!file) return;
+    var r=new FileReader();
+    r.onload=function(e){ S.bgImg=e.target.result; saveSettings(); applyAllSettings(); showNotification('Background set!'); };
+    r.readAsDataURL(file);
+}
+function applyBtnImg(input){
+    var file=input.files[0]; if(!file) return;
+    var r=new FileReader();
+    r.onload=function(e){ S.btnImg=e.target.result; saveSettings(); applyAllSettings(); showNotification('Button image set!'); };
+    r.readAsDataURL(file);
+}
+
+function applyAllSettings(){
+    var root=document.documentElement;
+    // Stop all RGB intervals first
+    Object.keys(rgbIntervals).forEach(function(k){ clearInterval(rgbIntervals[k]); delete rgbIntervals[k]; });
+
+    // Outline color
+    if(S.rgbOutline){
+        var hue=0;
+        rgbIntervals.outline=setInterval(function(){
+            hue=(hue+2)%360;
+            var c='hsl('+hue+',100%,60%)';
+            document.querySelectorAll('.falling-dot').forEach(function(d){d.style.boxShadow='none';});
+            root.style.setProperty('--oc',c);
+            document.querySelectorAll('[style*="border:3px solid"],[style*="border: 3px solid"],.modal,.modal-header,.page,.login-container,.setup-container,.chat-item,.chat-avatar,.account-item,.feed-item,.settings-option,.btn,.bottom-nav,.nav-btn,.home-header,.search-container,.profile-preview,.setup-input,.setup-textarea,.login-input,.post-textarea,.upload-btn').forEach(function(el){
+                el.style.setProperty('border-color',c,'important');
+            });
+            document.querySelectorAll('.bottom-nav .nav-btn').forEach(function(el){el.style.borderColor=c;});
+        },20);
+    } else {
+        var oc=S.outlineColor||'#ffffff';
+        document.querySelectorAll('*').forEach(function(el){el.style.removeProperty('border-color');});
+        // Re-apply via CSS variable approach - inject a style tag
+        var stId='usen-outline-style';
+        var st=document.getElementById(stId)||document.createElement('style');
+        st.id=stId;
+        st.textContent='*{--oc:'+oc+'}'+
+            '.chat-item,.modal,.modal-header,.page#loginPage,.page#setupPage,.login-container,.chat-avatar,'+
+            '.account-item,.feed-item,.btn,.bottom-nav,.nav-btn,.home-header,.search-container,'+
+            '.menu-modal,.menu-option,.profile-preview,.setup-input,.setup-textarea,.login-input,'+
+            '.post-textarea,.upload-btn,.pin-wrapper .login-input,.settings-option,.login-message{border-color:'+oc+' !important}';
+        if(!document.getElementById(stId)) document.head.appendChild(st);
+    }
+
+    // Background
+    var bgSt=document.getElementById('usen-bg-style')||document.createElement('style');
+    bgSt.id='usen-bg-style';
+    if(S.rgbBg){
+        bgSt.textContent='';
+        var bh=0;
+        rgbIntervals.bg=setInterval(function(){
+            bh=(bh+1)%360;
+            document.body.style.background='hsl('+bh+',80%,15%)';
+        },30);
+    } else if(S.bgImg){
+        document.body.style.background='url('+S.bgImg+') center/cover no-repeat';
+        bgSt.textContent='';
+    } else {
+        document.body.style.background=S.bgColor||'#000';
+        bgSt.textContent='';
+    }
+    if(!document.getElementById('usen-bg-style')) document.head.appendChild(bgSt);
+
+    // Stars
+    window._starsEnabled = S.stars!==false;
+    window._starColor = S.starColor||'#ffffff';
+    window._starSpeed = S.starSpeed||1;
+
+    // Font
+    var fontSt=document.getElementById('usen-font-style')||document.createElement('style');
+    fontSt.id='usen-font-style';
+    if(S.rgbFont){
+        fontSt.textContent='';
+        var fh=0;
+        rgbIntervals.font=setInterval(function(){
+            fh=(fh+2)%360;
+            document.body.style.color='hsl('+fh+',100%,70%)';
+        },20);
+    } else {
+        document.body.style.color='#fff';
+        fontSt.textContent='*{font-family:'+S.font+' !important}';
+    }
+    if(!document.getElementById('usen-font-style')) document.head.appendChild(fontSt);
+
+    // Buttons
+    var btnSt=document.getElementById('usen-btn-style')||document.createElement('style');
+    btnSt.id='usen-btn-style';
+    if(S.rgbBtn){
+        btnSt.textContent='';
+        var btn_h=0;
+        rgbIntervals.btn=setInterval(function(){
+            btn_h=(btn_h+2)%360;
+            var bc='hsl('+btn_h+',80%,30%)';
+            document.querySelectorAll('.btn').forEach(function(b){ b.style.background=bc; });
+        },20);
+    } else {
+        var btnBg=S.btnBg||'#000';
+        var btnBgRule=S.btnImg?'url('+S.btnImg+') center/cover no-repeat':btnBg;
+        var btnOc=S.btnOutline||'#fff';
+        btnSt.textContent='.btn{background:'+btnBgRule+' !important;border-color:'+btnOc+' !important}'+
+            '.btn:hover{filter:brightness(1.4)}';
+    }
+    if(!document.getElementById('usen-btn-style')) document.head.appendChild(btnSt);
+}
+
+function resetSettings(){
+    localStorage.removeItem('usen_settings');
+    S={};
+    Object.keys(S_DEFAULTS).forEach(function(k){S[k]=S_DEFAULTS[k];});
+    saveSettings();
+    applyAllSettings();
+    loadSettingsUI();
+    showNotification('Settings reset!');
+}
+async function openBlockedList(){
+    var modal=document.getElementById('blockedModal');
+    if(!modal){
+        modal=document.createElement('div');modal.id='blockedModal';modal.className='modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML='';modal.classList.add('active');
+    var hd=document.createElement('div');hd.className='modal-header';hd.innerHTML='<span>Blocked Users</span>';
+    var cb=document.createElement('button');cb.className='modal-close';cb.textContent='X';cb.onclick=function(){modal.classList.remove('active');};hd.appendChild(cb);modal.appendChild(hd);
+    var content=document.createElement('div');content.className='modal-content';
+    var snap=await db.collection('users').doc(currentUser.uid).collection('blocked').get();
+    if(snap.empty){content.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No blocked users.</div>';}
+    else{
+        snap.forEach(function(doc){
+            var b=doc.data();
+            var row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:15px;border-bottom:3px solid #fff;';
+            var name=document.createElement('div');name.textContent='@'+b.username;
+            var unblockBtn=document.createElement('button');unblockBtn.className='btn';unblockBtn.style.cssText='padding:8px 14px;font-size:13px;';unblockBtn.textContent='Unblock';
+            unblockBtn.onclick=async function(){
+                await db.collection('users').doc(currentUser.uid).collection('blocked').doc(doc.id).delete();
+                row.remove();showNotification('@'+b.username+' unblocked.');
+            };
+            row.appendChild(name);row.appendChild(unblockBtn);content.appendChild(row);
+        });
+    }
+    modal.appendChild(content);
 }
 
 // ── HELPERS ───────────────────────────────────────────────
@@ -713,7 +1034,23 @@ function closeModal(id){document.getElementById(id).classList.remove('active');c
 function setBtn(id,d){var b=document.getElementById(id);if(b)b.disabled=d;}
 function fbErr(e){var m={'auth/email-already-in-use':'Username already taken!','auth/user-not-found':'Account not found!','auth/wrong-password':'Wrong PIN!','auth/invalid-credential':'Wrong username or PIN!','auth/too-many-requests':'Too many attempts. Try later.','auth/weak-password':'PIN too short (min 6)'};return m[e.code]||e.message;}
 function showNotification(text){var old=document.querySelector('.usen-notif');if(old)old.remove();var n=document.createElement('div');n.className='usen-notif';n.style.cssText="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#fff;color:#000;padding:15px 30px;border:3px solid #000;z-index:99999;font-family:'Courier Prime',monospace;font-size:16px;letter-spacing:-0.5px;white-space:nowrap;";n.textContent=text;document.body.appendChild(n);setTimeout(function(){n.remove();},2500);}
-function addFallingDots(){setInterval(function(){if(Math.random()>0.6){var dot=document.createElement('div');dot.className='falling-dot';var size=[2,3,4,5,6][Math.floor(Math.random()*5)];dot.style.width=size+'px';dot.style.height=size+'px';dot.style.left=Math.random()*100+'%';dot.style.animationDuration=(3+Math.random()*4)+'s';document.body.appendChild(dot);setTimeout(function(){dot.remove();},7000);}},300);}
+function addFallingDots(){
+    setInterval(function(){
+        if(window._starsEnabled===false) return;
+        if(Math.random()>0.6){
+            var dot=document.createElement('div');dot.className='falling-dot';
+            var size=[2,3,4,5,6][Math.floor(Math.random()*5)];
+            dot.style.width=size+'px';dot.style.height=size+'px';
+            dot.style.left=Math.random()*100+'%';
+            dot.style.background=window._starColor||'#fff';
+            var spd=window._starSpeed||1;
+            dot.style.animationDuration=((3+Math.random()*4)/spd)+'s';
+            document.body.appendChild(dot);
+            setTimeout(function(){dot.remove();},(7000/spd)+500);
+        }
+    },300);
+}
+loadSettings();
 document.addEventListener('click',function(e){if(!e.target.closest('.bottom-nav')&&!e.target.closest('.menu-modal'))closeMenuModal();});
 addFallingDots();
 </script>
