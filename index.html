@@ -176,9 +176,10 @@
         <div style="margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid #fff;">
             <div style="margin-bottom:10px;letter-spacing:-0.5px;">Add Friend</div>
             <div style="display:flex;gap:10px;">
-                <input type="text" id="addFriendInput" placeholder="Enter @username" style="flex:1;border:3px solid #fff;background:#000;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:16px;" onkeydown="if(event.key==='Enter') addFriend()"/>
+                <input type="text" id="addFriendInput" placeholder="Search users..." style="flex:1;border:3px solid #fff;background:#000;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:16px;" oninput="searchUsers()" onkeydown="if(event.key==='Enter') addFriend()"/>
                 <button class="btn" onclick="addFriend()" style="padding:10px 20px;">+</button>
             </div>
+            <div id="userSearchResults" style="border:3px solid #fff;border-top:none;display:none;"></div>
         </div>
         <div style="margin-bottom:15px;letter-spacing:-0.5px;">Your Friends</div>
         <div id="accountsList" class="accounts-list"></div>
@@ -238,7 +239,7 @@ auth.onAuthStateChanged(async function(user){
         var doc=await db.collection('users').doc(user.uid).get();
         if(doc.exists&&doc.data().displayName){
             currentProfile=doc.data();
-            showPage('homePage'); loadFriends(); listenForCall();
+            showPage('homePage'); loadFriends(); listenForCall(); listenForFriendRequests(); listenForFriendRequests();
         } else {
             document.getElementById('profileUsernameDisplay').textContent='@'+user.email.replace('@usen.app','');
             showPage('setupPage');
@@ -321,7 +322,7 @@ async function completeSetup(){
     try{
         await db.collection('users').doc(currentUser.uid).update({displayName:dn,bio:bio,avatar:pendingAvatar||''});
         currentProfile={displayName:dn,bio:bio,avatar:pendingAvatar||'',username:currentUser.email.replace('@usen.app','')};
-        showPage('homePage'); loadFriends(); listenForCall();
+        showPage('homePage'); loadFriends(); listenForCall(); listenForFriendRequests(); listenForFriendRequests();
         showNotification('Welcome, '+dn+'!');
     }catch(e){showNotification(e.message);}
     setBtn('setupDoneBtn',false);
@@ -346,31 +347,122 @@ function filterChats(){
     var s=document.getElementById('searchInput').value.toLowerCase();
     document.querySelectorAll('#chatList .chat-item').forEach(function(i){i.style.display=i.querySelector('.chat-name').textContent.toLowerCase().includes(s)?'':'none';});
 }
+// ── SMART SEARCH ─────────────────────────────────────────
+var searchTimeout = null;
+async function searchUsers(){
+    var q = document.getElementById('addFriendInput').value.trim().replace('@','').toLowerCase();
+    var resultsEl = document.getElementById('userSearchResults');
+    if(!q){ resultsEl.style.display='none'; resultsEl.innerHTML=''; return; }
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async function(){
+        var snap = await db.collection('usernames')
+            .orderBy(firebase.firestore.FieldPath.documentId())
+            .startAt(q).endAt(q+'').limit(6).get();
+        resultsEl.innerHTML = '';
+        if(snap.empty){ resultsEl.style.display='none'; return; }
+        resultsEl.style.display = 'block';
+        snap.forEach(function(doc){
+            var uname = doc.id;
+            if(uname === (currentProfile.username||'')) return;
+            var row = document.createElement('div');
+            row.style.cssText = "padding:10px 14px;border-top:3px solid #fff;cursor:pointer;font-family:'Courier Prime',monospace;font-size:15px;background:#000;color:#fff;";
+            row.textContent = '@' + uname;
+            row.onmousedown = function(e){ e.preventDefault(); document.getElementById('addFriendInput').value = uname; resultsEl.style.display='none'; };
+            resultsEl.appendChild(row);
+        });
+    }, 200);
+}
+
 async function addFriend(){
-    var username=document.getElementById('addFriendInput').value.trim().replace('@','').toLowerCase();
+    var username = document.getElementById('addFriendInput').value.trim().replace('@','').toLowerCase();
+    var resultsEl = document.getElementById('userSearchResults');
+    if(resultsEl) resultsEl.style.display = 'none';
     if(!username){showNotification('Enter a username!');return;}
     if(username===(currentProfile.username||'')){showNotification("That's you lol");return;}
-    var udoc=await db.collection('usernames').doc(username).get();
+    var udoc = await db.collection('usernames').doc(username).get();
     if(!udoc.exists){showNotification("User doesn't exist!");return;}
-    var theirUid=udoc.data().uid;
-    var ex=await db.collection('users').doc(currentUser.uid).collection('friends').doc(theirUid).get();
-    if(ex.exists){showNotification('Already added!');return;}
-    var td=await db.collection('users').doc(theirUid).get(); var them=td.data();
-    await db.collection('users').doc(currentUser.uid).collection('friends').doc(theirUid).set({uid:theirUid,username:them.username,displayName:them.displayName,avatar:them.avatar||'',lastMsg:''});
-    document.getElementById('addFriendInput').value=''; generateAccountsList(); showNotification('@'+username+' added!');
+    var theirUid = udoc.data().uid;
+    var blockedSnap = await db.collection('users').doc(theirUid).collection('blocked').doc(currentUser.uid).get();
+    if(blockedSnap.exists){showNotification("Can't add that user.");return;}
+    var ex = await db.collection('users').doc(currentUser.uid).collection('friends').doc(theirUid).get();
+    if(ex.exists){showNotification('Already friends!');return;}
+    var already = await db.collection('users').doc(theirUid).collection('friendRequests').doc(currentUser.uid).get();
+    if(already.exists){showNotification('Request already sent!');return;}
+    await db.collection('users').doc(theirUid).collection('friendRequests').doc(currentUser.uid).set({
+        fromUid: currentUser.uid, fromUsername: currentProfile.username,
+        fromDisplayName: currentProfile.displayName, fromAvatar: currentProfile.avatar||'',
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('addFriendInput').value = '';
+    showNotification('Friend request sent to @'+username+'!');
 }
+
 async function generateAccountsList(){
-    var list=document.getElementById('accountsList'); list.innerHTML='<div style="color:#666;padding:10px;">Loading...</div>';
-    var snap=await db.collection('users').doc(currentUser.uid).collection('friends').get(); list.innerHTML='';
+    var list = document.getElementById('accountsList');
+    list.innerHTML = '<div style="color:#666;padding:10px;">Loading...</div>';
+    var snap = await db.collection('users').doc(currentUser.uid).collection('friends').get();
+    list.innerHTML = '';
     if(snap.empty){list.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No friends yet!</div>';return;}
     snap.forEach(function(doc){
-        var f=doc.data(); var item=document.createElement('div'); item.className='account-item';
-        var av=f.avatar?'<img src="'+f.avatar+'" style="width:100%;height:100%;object-fit:cover;"/>'+'':'&#128100;';
-        item.innerHTML='<div class="chat-avatar">'+av+'</div><div><div style="letter-spacing:-0.5px;">'+f.displayName+'</div><div style="color:#aaa;font-size:12px;">@'+f.username+'</div></div><button class="btn" style="padding:8px;font-size:13px;" onclick="removeFriend(\''+doc.id+'\')">Remove</button>';
+        var f = doc.data(); var item = document.createElement('div'); item.className = 'account-item';
+        var av = f.avatar?'<img src="'+f.avatar+'" style="width:100%;height:100%;object-fit:cover;"/>':'&#128100;';
+        item.innerHTML = '<div class="chat-avatar">'+av+'</div>'
+            +'<div><div style="letter-spacing:-0.5px;">'+f.displayName+'</div><div style="color:#aaa;font-size:12px;">@'+f.username+'</div></div>'
+            +'<div style="display:flex;flex-direction:column;gap:4px;">'
+            +'<button class="btn" style="padding:6px;font-size:12px;" onclick="removeFriend(''+doc.id+'')">Remove</button>'
+            +'<button class="btn" style="padding:6px;font-size:12px;border-color:#f55;color:#f55;" onclick="blockUser(''+doc.id+'',''+f.username+'')">Block</button>'
+            +'</div>';
         list.appendChild(item);
     });
 }
-async function removeFriend(uid){await db.collection('users').doc(currentUser.uid).collection('friends').doc(uid).delete();generateAccountsList();showNotification('Removed.');}
+async function removeFriend(uid){
+    await db.collection('users').doc(currentUser.uid).collection('friends').doc(uid).delete();
+    generateAccountsList(); showNotification('Removed.');
+}
+async function blockUser(uid, username){
+    await db.collection('users').doc(currentUser.uid).collection('blocked').doc(uid).set({uid:uid,username:username,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
+    await db.collection('users').doc(currentUser.uid).collection('friends').doc(uid).delete().catch(function(){});
+    await db.collection('users').doc(uid).collection('friends').doc(currentUser.uid).delete().catch(function(){});
+    generateAccountsList(); showNotification('@'+username+' blocked.');
+}
+function listenForFriendRequests(){
+    db.collection('users').doc(currentUser.uid).collection('friendRequests')
+        .onSnapshot(function(snap){
+            snap.docChanges().forEach(function(change){
+                if(change.type === 'added') showFriendRequestNotif(change.doc.data());
+            });
+        });
+}
+function showFriendRequestNotif(req){
+    if(document.getElementById('friendReqNotif_'+req.fromUid)) return;
+    var notif = document.createElement('div');
+    notif.id = 'friendReqNotif_'+req.fromUid;
+    notif.style.cssText = "position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#000;border:3px solid #fff;padding:16px 20px;z-index:99998;font-family:'Courier Prime',monospace;font-size:14px;min-width:280px;max-width:90vw;";
+    var top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:12px;';
+    var avEl = document.createElement('div');
+    avEl.style.cssText = 'width:40px;height:40px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:18px;background:#333;flex-shrink:0;';
+    avEl.innerHTML = req.fromAvatar?'<img src="'+req.fromAvatar+'" style="width:100%;height:100%;object-fit:cover;"/>':'&#128100;';
+    var txt = document.createElement('div');
+    txt.style.cssText = 'letter-spacing:-0.5px;line-height:1.4;';
+    txt.textContent = '@'+req.fromUsername+' wants to add you!';
+    top.appendChild(avEl); top.appendChild(txt); notif.appendChild(top);
+    var btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;';
+    var acc = document.createElement('button'); acc.textContent = 'Add Back';
+    acc.style.cssText = "flex:1;padding:10px;background:#fff;border:3px solid #fff;color:#000;font-family:'Courier Prime',monospace;font-size:14px;cursor:pointer;";
+    acc.onclick = async function(){ await acceptFriendRequest(req); notif.remove(); };
+    var dec = document.createElement('button'); dec.textContent = 'Decline';
+    dec.style.cssText = "flex:1;padding:10px;background:#000;border:3px solid #fff;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;cursor:pointer;";
+    dec.onclick = async function(){ await db.collection('users').doc(currentUser.uid).collection('friendRequests').doc(req.fromUid).delete(); notif.remove(); showNotification('Request declined.'); };
+    btns.appendChild(acc); btns.appendChild(dec); notif.appendChild(btns);
+    document.body.appendChild(notif);
+}
+async function acceptFriendRequest(req){
+    await db.collection('users').doc(currentUser.uid).collection('friends').doc(req.fromUid).set({uid:req.fromUid,username:req.fromUsername,displayName:req.fromDisplayName,avatar:req.fromAvatar||'',lastMsg:''});
+    await db.collection('users').doc(req.fromUid).collection('friends').doc(currentUser.uid).set({uid:currentUser.uid,username:currentProfile.username,displayName:currentProfile.displayName,avatar:currentProfile.avatar||'',lastMsg:''});
+    await db.collection('users').doc(currentUser.uid).collection('friendRequests').doc(req.fromUid).delete();
+    showNotification('@'+req.fromUsername+' added!');
+}
 
 function openChat(friend){
     if(chatUnsub) chatUnsub();
