@@ -9,7 +9,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
         *{margin:0;padding:0;box-sizing:border-box;}
@@ -281,7 +280,39 @@
 </div>
 <script>
 firebase.initializeApp({apiKey:"AIzaSyBRFwLZLhLXVY6EtrZiLOI-wnHijtvke_g",authDomain:"usen-28a88.firebaseapp.com",projectId:"usen-28a88",storageBucket:"usen-28a88.firebasestorage.app",messagingSenderId:"1015677012887",appId:"1:1015677012887:web:719fa0962f92ac5309d2d2"});
-var auth=firebase.auth(),db=firebase.firestore(),storage=firebase.storage();
+var auth=firebase.auth(),db=firebase.firestore();
+
+// ── CLOUDINARY UPLOAD (free, no credit card) ──────────────
+// Sign up free at cloudinary.com, then:
+// 1. Go to Settings → Upload → Upload presets → Add unsigned preset
+// 2. Set CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET below
+var CLOUDINARY_CLOUD_NAME='dzzjwxuz4';
+var CLOUDINARY_UPLOAD_PRESET='esrmkydh';
+
+async function uploadToCloudinary(fileOrBlob,fileName){
+    if(CLOUDINARY_CLOUD_NAME==='YOUR_CLOUD_NAME'){
+        // Fallback: base64 inline (small files only)
+        return null;
+    }
+    showNotification('Uploading 0%...');
+    return new Promise(function(resolve,reject){
+        var fd=new FormData();
+        fd.append('file',fileOrBlob,fileName||'upload');
+        fd.append('upload_preset',CLOUDINARY_UPLOAD_PRESET);
+        var xhr=new XMLHttpRequest();
+        xhr.open('POST','https://api.cloudinary.com/v1_1/'+CLOUDINARY_CLOUD_NAME+'/auto/upload');
+        xhr.upload.onprogress=function(e){if(e.lengthComputable)showNotification('Uploading '+Math.round(e.loaded/e.total*100)+'%...');};
+        xhr.onload=function(){
+            if(xhr.status===200){
+                var res=JSON.parse(xhr.responseText);
+                showNotification('Upload done!');
+                resolve(res.secure_url);
+            } else {reject(new Error('Upload failed: '+xhr.status));}
+        };
+        xhr.onerror=function(){reject(new Error('Network error'));};
+        xhr.send(fd);
+    });
+}
 var currentUser=null,currentProfile=null;
 var friendsUnsub=null,chatUnsub=null,callDocUnsub=null;
 var activeFriend=null,activeChatId=null;
@@ -939,23 +970,17 @@ function buildMsgEl(m){
 async function sendMsg(chatId,friend){var inp=document.getElementById('chatInput');if(!inp)return;var text=inp.value.trim();if(!text)return;inp.value='';await db.collection('chats').doc(chatId).collection('messages').add({type:'text',text:text,fromUid:currentUser.uid,fromName:currentProfile.displayName,timestamp:firebase.firestore.FieldValue.serverTimestamp()});updateLastMsg(friend,text);updateStreak(friend.uid);}
 async function sendFile(chatId,friend,file){
     if(!file)return;
-    if(file.size>50000000){showNotification('File too big (max 50MB)');return;}
-    showNotification('Uploading...');
+    if(file.size>100000000){showNotification('File too big (max 100MB)');return;}
+    var type=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'file';
     try{
-        var path='chats/'+chatId+'_'+Date.now()+'_'+file.name;
-        var ref=storage.ref(path);
-        var uploadTask=ref.put(file);
-        var url=await new Promise(function(resolve,reject){
-            uploadTask.on('state_changed',
-                function(snap){var pct=Math.round(snap.bytesTransferred/snap.totalBytes*100);showNotification('Uploading... '+pct+'%');},
-                reject,
-                function(){uploadTask.snapshot.ref.getDownloadURL().then(resolve);}
-            );
-        });
-        var type=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'file';
+        var url=await uploadToCloudinary(file,file.name);
+        if(!url){
+            // fallback base64 for small files
+            if(file.size>900000){showNotification('Configure Cloudinary for large files (free)');return;}
+            url=await new Promise(function(res){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.readAsDataURL(file);});
+        }
         await db.collection('chats').doc(chatId).collection('messages').add({type:type,data:url,fileName:file.name,fromUid:currentUser.uid,fromName:currentProfile.displayName,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
         updateLastMsg(friend,type==='image'?'[image]':type==='video'?'[video]':type==='audio'?'[voice]':'[file] '+file.name);
-        showNotification('Sent!');
     }catch(e){showNotification('Upload failed: '+e.message);}
 }
 function startRecording(){if(isRecording)return;navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){isRecording=true;audioChunks=[];mediaRecorder=new MediaRecorder(stream);mediaRecorder.ondataavailable=function(e){audioChunks.push(e.data);};mediaRecorder.start();var btn=document.getElementById('voiceRecBtn');if(btn)btn.style.background='#f00';showNotification('Recording... release to send');}).catch(function(){showNotification('Mic access denied');});}
@@ -1834,39 +1859,22 @@ async function submitPost(type){
     var hashtags=hashRaw.split(/\s+/).filter(Boolean);
     var vis=(document.getElementById('statusVis')||{}).value||'friends';
     if(!desc.trim()&&!postMediaData){showNotification('Add something first!');return;}
-
     var submitBtn=document.getElementById('postBtn');if(submitBtn)submitBtn.disabled=true;
-
     var mediaUrl=null;
     if(postMediaData){
         try{
-            showNotification('Uploading media...');
-            // Detect mime type from base64 header
             var mime=postMediaData.split(';')[0].split(':')[1]||'application/octet-stream';
             var ext=mime.split('/')[1]||'bin';
-            var path='posts/'+currentUser.uid+'_'+Date.now()+'.'+ext;
-            var ref=storage.ref(path);
-            // Convert base64 to blob for upload
             var byteStr=atob(postMediaData.split(',')[1]);
             var arr=new Uint8Array(byteStr.length);
             for(var i=0;i<byteStr.length;i++) arr[i]=byteStr.charCodeAt(i);
             var blob=new Blob([arr],{type:mime});
-            // Upload with progress
-            var uploadTask=ref.put(blob);
-            mediaUrl=await new Promise(function(resolve,reject){
-                uploadTask.on('state_changed',
-                    function(snap){var pct=Math.round(snap.bytesTransferred/snap.totalBytes*100);showNotification('Uploading... '+pct+'%');},
-                    reject,
-                    function(){uploadTask.snapshot.ref.getDownloadURL().then(resolve);}
-                );
-            });
-        }catch(e){
-            showNotification('Upload failed: '+e.message);
-            if(submitBtn)submitBtn.disabled=false;
-            return;
-        }
+            var uploaded=await uploadToCloudinary(blob,'post_'+Date.now()+'.'+ext);
+            if(uploaded) mediaUrl=uploaded;
+            else if(blob.size<900000) mediaUrl=postMediaData; // small enough for inline
+            else{showNotification('Set up Cloudinary for large files (free). See README.');if(submitBtn)submitBtn.disabled=false;return;}
+        }catch(e){showNotification('Upload failed: '+e.message);if(submitBtn)submitBtn.disabled=false;return;}
     }
-
     var postData={
         type:type,text:desc.trim(),hashtags:hashtags,
         uid:currentUser.uid,username:currentProfile.username,
@@ -1875,8 +1883,6 @@ async function submitPost(type){
         timestamp:firebase.firestore.FieldValue.serverTimestamp()
     };
     if(mediaUrl) postData.mediaData=mediaUrl;
-    else if(postMediaData) postData.mediaData=postMediaData; // fallback for small inline data
-
     try{
         await db.collection('posts').add(postData);
         postMediaData=null;
@@ -1884,10 +1890,7 @@ async function submitPost(type){
         closeModal('socialModal');
         showNotification(type+' posted!');
         if(document.getElementById('feedModal').classList.contains('active')) loadFeed();
-    }catch(e){
-        showNotification('Post failed: '+e.message);
-        if(submitBtn)submitBtn.disabled=false;
-    }
+    }catch(e){showNotification('Post failed: '+e.message);if(submitBtn)submitBtn.disabled=false;}
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────
@@ -2705,24 +2708,17 @@ async function sendGroupMsg(gid,myColor,g){
 
 async function sendGroupFile(gid,myColor,g,file){
     if(!file)return;
-    if(file.size>50000000){showNotification('File too big (max 50MB)');return;}
-    showNotification('Uploading...');
+    if(file.size>100000000){showNotification('File too big (max 100MB)');return;}
+    var type=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'file';
     try{
-        var path='groups/'+gid+'_'+Date.now()+'_'+file.name;
-        var ref=storage.ref(path);
-        var uploadTask=ref.put(file);
-        var url=await new Promise(function(resolve,reject){
-            uploadTask.on('state_changed',
-                function(snap){var pct=Math.round(snap.bytesTransferred/snap.totalBytes*100);showNotification('Uploading... '+pct+'%');},
-                reject,
-                function(){uploadTask.snapshot.ref.getDownloadURL().then(resolve);}
-            );
-        });
-        var type=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'file';
+        var url=await uploadToCloudinary(file,file.name);
+        if(!url){
+            if(file.size>900000){showNotification('Configure Cloudinary for large files (free)');return;}
+            url=await new Promise(function(res){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.readAsDataURL(file);});
+        }
         await db.collection('groups').doc(gid).collection('messages').add({type:type,data:url,fileName:file.name,fromUid:currentUser.uid,fromUsername:currentProfile.username,fromDisplayName:currentProfile.displayName,color:myColor,timestamp:firebase.firestore.FieldValue.serverTimestamp()});
         var preview=type==='image'?'[image]':type==='video'?'[video]':type==='audio'?'[voice]':'[file] '+file.name;
         db.collection('groups').doc(gid).update({lastMsg:preview,lastMsgTime:firebase.firestore.FieldValue.serverTimestamp()}).catch(function(){});
-        showNotification('Sent!');
     }catch(e){showNotification('Upload failed: '+e.message);}
 }
 
