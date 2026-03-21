@@ -567,26 +567,92 @@ async function addFriend(){
 
 // ── FRIEND LIST ───────────────────────────────────────────
 async function generateAccountsList(){
-    var list=document.getElementById('accountsList');list.innerHTML='<div style="color:#666;padding:10px;">Loading...</div>';
+    var list=document.getElementById('accountsList');
+    list.innerHTML='<div style="color:#666;padding:20px;text-align:center;">Loading...</div>';
+    list.style.cssText='display:flex;flex-direction:column;gap:0;';
     var snap=await db.collection('users').doc(currentUser.uid).collection('friends').get();
     list.innerHTML='';
-    if(snap.empty){list.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No friends yet!</div>';return;}
+    if(snap.empty){
+        list.innerHTML='<div style="padding:40px;text-align:center;color:#666;font-size:16px;">No friends yet!</div>';
+        return;
+    }
     snap.forEach(function(doc){
-        var f=doc.data();var item=document.createElement('div');item.className='account-item';
-        var avEl=document.createElement('div');avEl.className='chat-avatar';avEl.textContent='?';
-        var info=document.createElement('div');
-        info.innerHTML='<div style="letter-spacing:-0.5px;">'+f.displayName+'</div><div style="color:#aaa;font-size:12px;">@'+f.username+'</div>';
-        var btnWrap=document.createElement('div');btnWrap.style.cssText='display:flex;flex-direction:column;gap:4px;';
-        var remBtn=document.createElement('button');remBtn.className='btn';remBtn.style.cssText='padding:6px;font-size:12px;';remBtn.textContent='Remove';remBtn.onclick=function(){removeFriend(doc.id);};
-        var blkBtn=document.createElement('button');blkBtn.className='btn';blkBtn.style.cssText='padding:6px;font-size:12px;border-color:#f55;color:#f55;';blkBtn.textContent='Block';blkBtn.onclick=function(){blockUser(doc.id,f.username);};
-        btnWrap.appendChild(remBtn);btnWrap.appendChild(blkBtn);
-        item.appendChild(avEl);item.appendChild(info);item.appendChild(btnWrap);
-        list.appendChild(item);
-        // Load live avatar
+        var f=doc.data();
+
+        // Card
+        var card=document.createElement('div');
+        card.style.cssText='display:flex;align-items:center;gap:14px;padding:16px;border-bottom:3px solid #fff;position:relative;transition:background 0.2s;';
+        card.onmouseenter=function(){card.style.background='#0a0a0a';};
+        card.onmouseleave=function(){card.style.background='transparent';};
+
+        // Avatar with status ring check
+        var avWrap=document.createElement('div');avWrap.style.cssText='position:relative;width:54px;height:54px;flex-shrink:0;';
+        var avEl=document.createElement('div');
+        avEl.style.cssText='width:54px;height:54px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:22px;background:#222;cursor:pointer;border-radius:0;';
+        avEl.textContent='?';
+        avEl.onclick=function(){viewProfile({uid:f.uid,displayName:f.displayName});};
+        avWrap.appendChild(avEl);
+        checkStatusRing(avWrap,f.uid);
+        card.appendChild(avWrap);
+
+        // Info
+        var info=document.createElement('div');info.style.cssText='flex:1;min-width:0;cursor:pointer;';
+        info.onclick=function(){viewProfile({uid:f.uid,displayName:f.displayName});};
+        var nameEl=document.createElement('div');nameEl.style.cssText='font-size:16px;letter-spacing:-0.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';nameEl.textContent=f.displayName;
+        var unEl=document.createElement('div');unEl.style.cssText='font-size:12px;color:#666;';unEl.textContent='@'+f.username;
+        var tagsEl=document.createElement('div');tagsEl.style.marginTop='4px';
+        info.appendChild(nameEl);info.appendChild(unEl);info.appendChild(tagsEl);
+        card.appendChild(info);
+
+        // Message button
+        var msgBtn=document.createElement('button');
+        msgBtn.style.cssText='background:#000;border:2px solid #fff;color:#fff;padding:8px;cursor:pointer;font-size:18px;flex-shrink:0;';
+        msgBtn.title='Message';
+        msgBtn.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+        msgBtn.onclick=function(){closeModal('accountsModal');openChat(f);};
+        card.appendChild(msgBtn);
+
+        // 3-dot options
+        var dotsBtn=document.createElement('button');
+        dotsBtn.style.cssText='background:#000;border:2px solid #fff;color:#fff;padding:8px 10px;cursor:pointer;font-size:16px;flex-shrink:0;letter-spacing:2px;';
+        dotsBtn.textContent='...';
+        dotsBtn.onclick=function(e){
+            e.stopPropagation();
+            var existing=card.querySelector('.friend-menu');
+            if(existing){existing.remove();return;}
+            document.querySelectorAll('.friend-menu').forEach(function(m){m.remove();});
+            var menu=document.createElement('div');
+            menu.className='friend-menu';
+            menu.style.cssText='position:absolute;right:0;top:100%;background:#000;border:3px solid #fff;z-index:500;min-width:140px;';
+            var opts=[
+                {label:'View Profile',fn:function(){menu.remove();viewProfile({uid:f.uid,displayName:f.displayName});}},
+                {label:'Message',fn:function(){menu.remove();closeModal('accountsModal');openChat(f);}},
+                {label:'Remove',color:'#fa0',fn:function(){menu.remove();removeFriend(doc.id);}},
+                {label:'Block',color:'#f55',fn:function(){menu.remove();blockUser(doc.id,f.username);}}
+            ];
+            opts.forEach(function(opt,i){
+                var row=document.createElement('div');
+                row.style.cssText='padding:12px 16px;cursor:pointer;font-size:14px;color:'+(opt.color||'#fff')+(i<opts.length-1?';border-bottom:2px solid #fff;':'');
+                row.textContent=opt.label;
+                row.onmouseenter=function(){row.style.background='#fff';row.style.color='#000';};
+                row.onmouseleave=function(){row.style.background='#000';row.style.color=opt.color||'#fff';};
+                row.onclick=opt.fn;
+                menu.appendChild(row);
+            });
+            card.appendChild(menu);
+            setTimeout(function(){
+                document.addEventListener('click',function closer(){menu.remove();document.removeEventListener('click',closer);},{once:true});
+            },0);
+        };
+        card.appendChild(dotsBtn);
+        list.appendChild(card);
+
+        // Load live avatar + tags
         db.collection('users').doc(f.uid).get().then(function(d){
             if(!d.exists)return;
             var data=d.data();
             if(data.avatar){var img=document.createElement('img');img.src=data.avatar;img.style.cssText='width:100%;height:100%;object-fit:cover;';avEl.innerHTML='';avEl.appendChild(img);}
+            if(data.tags&&data.tags.length)tagsEl.innerHTML=renderTags(data.tags);
         }).catch(function(){});
     });
 }
@@ -946,7 +1012,7 @@ async function buildFeedItem(p){
         item.appendChild(vid);
     }
     if(p.text){
-        var textEl=document.createElement('div');textEl.style.cssText='font-size:15px;line-height:1.6;margin-bottom:10px;word-break:break-word;';textEl.textContent=p.text;item.appendChild(textEl);
+        var textEl=document.createElement('div');textEl.style.cssText='font-size:15px;line-height:1.6;margin-bottom:10px;word-break:break-word;';textEl.className='feed-content-text';textEl.textContent=p.text;item.appendChild(textEl);
     }
     if(p.hashtags&&p.hashtags.length){
         var hashEl=document.createElement('div');hashEl.style.cssText='font-size:13px;color:#aaa;margin-bottom:10px;';
@@ -1030,6 +1096,98 @@ async function buildFeedItem(p){
         else{navigator.clipboard.writeText(window.location.href).then(function(){showNotification('Link copied!');});}
     };
     actions.appendChild(shareBtn);
+
+    // 3-dot menu — only shown to post owner
+    if(p.uid===currentUser.uid){
+        var dotsBtn=document.createElement('button');
+        dotsBtn.style.cssText='background:#000;border:2px solid #fff;color:#fff;padding:6px 12px;cursor:pointer;font-size:18px;font-family:"Courier Prime",monospace;margin-left:auto;';
+        dotsBtn.textContent='...';
+        dotsBtn.onclick=function(e){
+            e.stopPropagation();
+            var existing=document.getElementById('postMenu_'+p._id);
+            if(existing){existing.remove();return;}
+            // Close any other open menus
+            document.querySelectorAll('.post-menu').forEach(function(m){m.remove();});
+            var menu=document.createElement('div');
+            menu.id='postMenu_'+p._id;
+            menu.className='post-menu';
+            menu.style.cssText='position:absolute;right:20px;background:#000;border:3px solid #fff;z-index:500;min-width:160px;';
+            item.style.position='relative';
+
+            var opts=[
+                {label:'Edit',fn:function(){
+                    menu.remove();
+                    // Inline edit
+                    var oldText=p.text||'';
+                    var editArea=document.createElement('textarea');
+                    editArea.value=oldText;
+                    editArea.style.cssText='width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:"Courier Prime",monospace;font-size:15px;min-height:80px;margin-top:10px;';
+                    var saveBtn2=document.createElement('button');saveBtn2.className='btn';saveBtn2.style.cssText='margin-top:8px;width:100%;padding:10px;font-size:14px;';saveBtn2.textContent='Save';
+                    var cancelBtn2=document.createElement('button');cancelBtn2.className='btn';cancelBtn2.style.cssText='margin-top:4px;width:100%;padding:10px;font-size:14px;border-color:#f55;color:#f55;';cancelBtn2.textContent='Cancel';
+                    var editBox=document.createElement('div');editBox.id='editBox_'+p._id;
+                    editBox.appendChild(editArea);editBox.appendChild(saveBtn2);editBox.appendChild(cancelBtn2);
+                    item.appendChild(editBox);
+                    editArea.focus();
+                    saveBtn2.onclick=async function(){
+                        var newText=editArea.value.trim();if(!newText)return;
+                        await db.collection('posts').doc(p._id).update({text:newText,edited:true});
+                        p.text=newText;
+                        var textEl=item.querySelector('.feed-content-text');
+                        if(textEl)textEl.textContent=newText;
+                        editBox.remove();showNotification('Post edited!');
+                    };
+                    cancelBtn2.onclick=function(){editBox.remove();};
+                }},
+                {label:'Replace Media',fn:function(){
+                    menu.remove();
+                    var fi=document.createElement('input');fi.type='file';fi.accept='image/*,video/*';
+                    fi.onchange=async function(){
+                        var file=fi.files[0];if(!file)return;
+                        if(file.size>10000000){showNotification('Too big (max 10MB)');return;}
+                        showNotification('Uploading...');
+                        var r=new FileReader();
+                        r.onload=async function(e){
+                            await db.collection('posts').doc(p._id).update({mediaData:e.target.result});
+                            p.mediaData=e.target.result;
+                            // Refresh media preview in item
+                            var oldMedia=item.querySelector('img,video');
+                            if(oldMedia){
+                                if(file.type.startsWith('image')){oldMedia.src=e.target.result;}
+                                else{var newVid=document.createElement('video');newVid.src=e.target.result;newVid.controls=true;newVid.style.cssText='width:100%;max-height:400px;display:block;margin-bottom:10px;';oldMedia.replaceWith(newVid);}
+                            }
+                            showNotification('Media replaced!');
+                        };
+                        r.readAsDataURL(file);
+                    };
+                    fi.click();
+                }},
+                {label:'Delete',color:'#f55',fn:async function(){
+                    menu.remove();
+                    if(!confirm('Delete this post?'))return;
+                    await db.collection('posts').doc(p._id).delete();
+                    item.remove();showNotification('Post deleted.');
+                }}
+            ];
+
+            opts.forEach(function(opt){
+                var row=document.createElement('div');
+                row.style.cssText='padding:14px 18px;cursor:pointer;border-bottom:2px solid #fff;font-size:15px;color:'+(opt.color||'#fff')+';';
+                row.textContent=opt.label;
+                row.onmouseenter=function(){row.style.background='#fff';row.style.color='#000';};
+                row.onmouseleave=function(){row.style.background='#000';row.style.color=opt.color||'#fff';};
+                row.onclick=opt.fn;
+                menu.appendChild(row);
+            });
+            menu.lastChild.style.borderBottom='none';
+            item.appendChild(menu);
+
+            // Close on outside click
+            setTimeout(function(){
+                document.addEventListener('click',function closer(){menu.remove();document.removeEventListener('click',closer);},{ once:true });
+            },0);
+        };
+        actions.appendChild(dotsBtn);
+    }
 
     item.appendChild(actions);
 
