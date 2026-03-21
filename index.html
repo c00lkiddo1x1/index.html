@@ -2433,11 +2433,23 @@ function renderJoinCreate(){
     nameInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;margin-bottom:10px;";
     var descInp=document.createElement('input');descInp.type='text';descInp.placeholder='Description (optional)';
     descInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;margin-bottom:10px;";
-    var pubRow=document.createElement('div');pubRow.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:14px;';
+    var pubRow=document.createElement('div');pubRow.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:10px;';
     var pubLabel=document.createElement('span');pubLabel.style.fontSize='14px';pubLabel.textContent='Public (anyone can join):';
     var pubToggle=document.createElement('button');pubToggle.className='btn';pubToggle.style.cssText='padding:6px 14px;font-size:13px;width:60px;';pubToggle.textContent='OFF';
     var isPublic=false;
-    pubToggle.onclick=function(){isPublic=!isPublic;pubToggle.textContent=isPublic?'ON':'OFF';pubToggle.style.background=isPublic?'#fff':'#000';pubToggle.style.color=isPublic?'#000':'#fff';};
+    // PIN field — only relevant for private groups
+    var pinRow=document.createElement('div');pinRow.style.cssText='margin-bottom:14px;';
+    var pinLabel=document.createElement('div');pinLabel.style.cssText='font-size:12px;color:#666;margin-bottom:4px;';pinLabel.textContent='Join PIN (leave blank = no PIN, only for private groups)';
+    var pinInp=document.createElement('input');pinInp.type='text';pinInp.placeholder='e.g. 1234';
+    pinInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;letter-spacing:4px;";
+    pinRow.appendChild(pinLabel);pinRow.appendChild(pinInp);
+    pubToggle.onclick=function(){
+        isPublic=!isPublic;
+        pubToggle.textContent=isPublic?'ON':'OFF';
+        pubToggle.style.background=isPublic?'#fff':'#000';
+        pubToggle.style.color=isPublic?'#000':'#fff';
+        pinRow.style.display=isPublic?'none':'block';
+    };
     pubRow.appendChild(pubLabel);pubRow.appendChild(pubToggle);
     var createBtn=document.createElement('button');createBtn.className='btn upload-btn';createBtn.textContent='Create';
     createBtn.onclick=async function(){
@@ -2446,19 +2458,20 @@ function renderJoinCreate(){
         createBtn.disabled=true;
         var code=Math.random().toString(36).substr(2,6).toUpperCase();
         var myColor=GROUP_COLORS[Math.floor(Math.random()*GROUP_COLORS.length)];
+        var pin=(!isPublic&&pinInp.value.trim())?pinInp.value.trim():'';
         var ref=await db.collection('groups').add({
             name:name,description:descInp.value.trim(),
             ownerUid:currentUser.uid,ownerUsername:currentProfile.username,
             memberUids:[currentUser.uid],
             members:[{uid:currentUser.uid,username:currentProfile.username,displayName:currentProfile.displayName,avatar:currentProfile.avatar||'',color:myColor}],
-            isPublic:isPublic,joinCode:code,avatar:'',
+            isPublic:isPublic,joinCode:code,groupPin:pin,avatar:'',
             createdAt:firebase.firestore.FieldValue.serverTimestamp()
         });
         createBtn.disabled=false;
-        showNotification('Group created! Code: '+code);
+        showNotification('Group created! Code: '+code+(pin?' · PIN: '+pin:''));
         switchGroupTab('mine');
     };
-    createBox.appendChild(cTitle);createBox.appendChild(nameInp);createBox.appendChild(descInp);createBox.appendChild(pubRow);createBox.appendChild(createBtn);
+    createBox.appendChild(cTitle);createBox.appendChild(nameInp);createBox.appendChild(descInp);createBox.appendChild(pubRow);createBox.appendChild(pinRow);createBox.appendChild(createBtn);
     c.appendChild(createBox);
 
     // Join section
@@ -2907,9 +2920,29 @@ function openGroupSettings(g,parentModal){
         nmRow.appendChild(nmLabel);nmRow.appendChild(nmInp);nmRow.appendChild(nmBtn);content.appendChild(nmRow);
 
         // Join code
-        var codeRow=document.createElement('div');codeRow.style.cssText='border:2px solid #fff;padding:12px;';
+        var codeRow=document.createElement('div');codeRow.style.cssText='border:2px solid #fff;padding:12px;margin-bottom:10px;';
         codeRow.innerHTML='<div style="font-size:12px;color:#666;margin-bottom:4px;">Join Code</div><div style="font-size:20px;letter-spacing:4px;">'+g.joinCode+'</div>';
         content.appendChild(codeRow);
+
+        // PIN management
+        var pinMgmt=document.createElement('div');pinMgmt.style.cssText='margin-bottom:10px;';
+        var pinMLabel=document.createElement('div');pinMLabel.style.cssText='font-size:12px;color:#666;margin-bottom:4px;';
+        pinMLabel.textContent='Group PIN ('+(g.groupPin?'currently set: '+g.groupPin:'none')+')';
+        var pinMRow=document.createElement('div');pinMRow.style.cssText='display:flex;gap:8px;';
+        var pinMInp=document.createElement('input');pinMInp.type='text';pinMInp.placeholder='New PIN (blank to remove)';
+        pinMInp.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:8px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;";
+        var pinMBtn=document.createElement('button');pinMBtn.className='btn';pinMBtn.style.cssText='padding:8px 14px;';pinMBtn.textContent='Set PIN';
+        pinMBtn.onclick=async function(){
+            var newPin=pinMInp.value.trim();
+            await db.collection('groups').doc(g._id).update({groupPin:newPin});
+            g.groupPin=newPin;
+            pinMLabel.textContent='Group PIN ('+(newPin?'currently set: '+newPin:'none')+')';
+            pinMInp.value='';
+            showNotification(newPin?'PIN set to: '+newPin:'PIN removed.');
+        };
+        pinMRow.appendChild(pinMInp);pinMRow.appendChild(pinMBtn);
+        pinMgmt.appendChild(pinMLabel);pinMgmt.appendChild(pinMRow);
+        content.appendChild(pinMgmt);
     }
 
     // My color
@@ -3225,6 +3258,72 @@ async function openVidComments(postId,p){
     cmtList.appendChild(inputRow);
 }
 
+function showGroupLinkError(msg){
+    var overlay=document.createElement('div');overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;';
+    var box=document.createElement('div');box.style.cssText='border:3px solid #f55;padding:40px;max-width:400px;width:90%;text-align:center;';
+    var icon=document.createElement('div');icon.style.cssText='font-size:48px;margin-bottom:8px;';icon.textContent='🚫';
+    var txt=document.createElement('div');txt.style.cssText='font-size:18px;color:#f55;margin-bottom:20px;';txt.textContent=msg;
+    var homeBtn=document.createElement('button');homeBtn.className='btn';homeBtn.style.cssText='padding:12px 30px;font-size:15px;';homeBtn.textContent='Go Home';
+    homeBtn.onclick=function(){overlay.remove();history.replaceState({},'',window.location.pathname);};
+    box.appendChild(icon);box.appendChild(txt);box.appendChild(homeBtn);
+    overlay.appendChild(box);document.body.appendChild(overlay);
+}
+
+function showGroupJoinScreen(g,gdoc,requiredPin){
+    var overlay=document.createElement('div');overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;';
+    var box=document.createElement('div');box.style.cssText='border:3px solid #fff;padding:40px;max-width:420px;width:90%;display:flex;flex-direction:column;gap:16px;';
+
+    // Group avatar letter
+    var avEl=document.createElement('div');avEl.style.cssText='width:70px;height:70px;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:30px;background:#222;align-self:center;';
+    if(g.avatar){var avImg=document.createElement('img');avImg.src=g.avatar;avImg.style.cssText='width:100%;height:100%;object-fit:cover;';avEl.appendChild(avImg);}
+    else{avEl.textContent=g.name?g.name[0].toUpperCase():'G';}
+
+    var titleEl=document.createElement('div');titleEl.style.cssText='font-size:22px;letter-spacing:-0.5px;text-align:center;';
+    titleEl.textContent='"'+g.name+'" is '+(requiredPin?'Protected!':'Public!');
+
+    var subEl=document.createElement('div');subEl.style.cssText='font-size:13px;color:#666;text-align:center;';
+    subEl.textContent=(g.memberUids||[]).length+' members · '+(g.isPublic?'Public':'Private');
+
+    var pinSection=document.createElement('div');
+
+    if(requiredPin){
+        var pinLabel=document.createElement('div');pinLabel.style.cssText='font-size:14px;color:#aaa;margin-bottom:6px;';pinLabel.textContent='Type PIN to Join:';
+        var pinInput=document.createElement('input');pinInput.type='password';pinInput.placeholder='Enter PIN...';
+        pinInput.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:12px;color:#fff;font-family:'Courier Prime',monospace;font-size:18px;letter-spacing:6px;text-align:center;";
+        pinSection.appendChild(pinLabel);pinSection.appendChild(pinInput);
+
+        var btnRow=document.createElement('div');btnRow.style.cssText='display:flex;gap:10px;margin-top:4px;';
+        var joinBtn=document.createElement('button');joinBtn.className='btn';joinBtn.style.cssText='flex:1;padding:14px;font-size:15px;border-color:#6bcb77;color:#6bcb77;';joinBtn.textContent='Join';
+        var cancelBtn=document.createElement('button');cancelBtn.className='btn';cancelBtn.style.cssText='flex:1;padding:14px;font-size:15px;border-color:#f55;color:#f55;';cancelBtn.textContent='Cancel';
+        cancelBtn.onclick=function(){overlay.remove();history.replaceState({},'',window.location.pathname);};
+        joinBtn.onclick=async function(){
+            if(pinInput.value.trim()!==String(requiredPin)){
+                pinInput.style.borderColor='#f55';
+                pinInput.value='';pinInput.placeholder='Wrong PIN, try again';
+                setTimeout(function(){pinInput.style.borderColor='#fff';pinInput.placeholder='Enter PIN...';},1500);
+                return;
+            }
+            overlay.remove();
+            await joinGroup(gdoc);
+        };
+        pinInput.onkeydown=function(e){if(e.key==='Enter')joinBtn.click();};
+        btnRow.appendChild(joinBtn);btnRow.appendChild(cancelBtn);
+        pinSection.appendChild(btnRow);
+    } else {
+        // Public — just confirm
+        var btnRow2=document.createElement('div');btnRow2.style.cssText='display:flex;gap:10px;';
+        var joinBtn2=document.createElement('button');joinBtn2.className='btn';joinBtn2.style.cssText='flex:1;padding:14px;font-size:15px;border-color:#6bcb77;color:#6bcb77;';joinBtn2.textContent='Join';
+        var cancelBtn2=document.createElement('button');cancelBtn2.className='btn';cancelBtn2.style.cssText='flex:1;padding:14px;font-size:15px;border-color:#f55;color:#f55;';cancelBtn2.textContent='Cancel';
+        cancelBtn2.onclick=function(){overlay.remove();history.replaceState({},'',window.location.pathname);};
+        joinBtn2.onclick=async function(){overlay.remove();await joinGroup(gdoc);};
+        btnRow2.appendChild(joinBtn2);btnRow2.appendChild(cancelBtn2);
+        pinSection.appendChild(btnRow2);
+    }
+
+    box.appendChild(avEl);box.appendChild(titleEl);box.appendChild(subEl);box.appendChild(pinSection);
+    overlay.appendChild(box);document.body.appendChild(overlay);
+}
+
 function openMenuModal(){document.getElementById('menuModal').classList.add('active');}
 function closeMenuModal(){document.getElementById('menuModal').classList.remove('active');}
 function openAccountsModal(){closeMenuModal();generateAccountsList();document.getElementById('accountsModal').classList.add('active');}
@@ -3264,18 +3363,19 @@ loadSettings();
             if(!currentUser)return;
             clearInterval(interval);
             var gdoc=await db.collection('groups').doc(gid).get();
-            if(!gdoc.exists){showNotification('Group not found');return;}
+            if(!gdoc.exists){showGroupLinkError('Group not found.');return;}
             var g=gdoc.data();g._id=gdoc.id;
-            if((g.bannedUids||[]).indexOf(currentUser.uid)!==-1){showNotification('You are banned from this group.');return;}
-            if((g.memberUids||[]).indexOf(currentUser.uid)===-1){
-                // Not a member — offer to join
-                if(g.isPublic){
-                    if(confirm('Join "'+g.name+'"?')) joinGroup(gdoc);
-                } else {
-                    showNotification('This group is private. You need an invite code.');
-                }
+            if((g.bannedUids||[]).indexOf(currentUser.uid)!==-1){showGroupLinkError('You are banned from "'+g.name+'".');return;}
+            if((g.memberUids||[]).indexOf(currentUser.uid)!==-1){
+                // Already a member — open directly
+                openGroupChat(g);return;
+            }
+            if(g.isPublic){
+                // Public — confirm and join
+                showGroupJoinScreen(g,gdoc,null);
             } else {
-                openGroupChat(g);
+                // Private — show PIN screen
+                showGroupJoinScreen(g,gdoc,g.groupPin||null);
             }
         },300);
         return;
