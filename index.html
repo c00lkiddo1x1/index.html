@@ -2081,17 +2081,19 @@ async function openAdminPanel(){
     async function showUsersTab(){
         t1.style.background='#000';t1.style.color='#fff';t2.style.background='#fff';t2.style.color='#000';
         content.innerHTML='<div style="color:#666;padding:20px;text-align:center;">Loading users...</div>';
-        var snap=await db.collection('users').orderBy('username').limit(200).get();
+        // Don't use orderBy — it skips docs missing that field. Fetch all and sort client-side.
+        var snap=await db.collection('users').limit(500).get();
+        var users=[];snap.forEach(function(doc){var u=doc.data();u._uid=doc.id;users.push(u);});
+        users.sort(function(a,b){return(a.username||'').localeCompare(b.username||'');});
         content.innerHTML='';
         var topRow=document.createElement('div');topRow.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;';
         var filterInp=document.createElement('input');filterInp.type='text';filterInp.placeholder='Filter by @username...';
         filterInp.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;";
-        var cntEl=document.createElement('div');cntEl.style.cssText='font-size:12px;color:#666;padding:10px;white-space:nowrap;';cntEl.textContent=snap.size+' users';
+        var cntEl=document.createElement('div');cntEl.style.cssText='font-size:12px;color:#666;padding:10px;white-space:nowrap;';cntEl.textContent=users.length+' users';
         topRow.appendChild(filterInp);topRow.appendChild(cntEl);content.appendChild(topRow);
         var list=document.createElement('div');content.appendChild(list);
         var allRows=[];
-        snap.forEach(function(doc){
-            var u=doc.data();u._uid=doc.id;
+        users.forEach(function(u){
             var row=document.createElement('div');row.style.cssText='border-bottom:2px solid #222;padding:12px 0;';
             var top2=document.createElement('div');top2.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px;';
             var nameEl=document.createElement('span');nameEl.style.cssText='font-size:15px;color:'+(u.banned?'#f55':'#fff')+';flex:1;';
@@ -3399,7 +3401,17 @@ function logActivity(uid,type,action){
 }
 function updateLastOnline(){
     if(!currentUser)return;
-    db.collection('users').doc(currentUser.uid).update({lastOnline:firebase.firestore.FieldValue.serverTimestamp()}).catch(function(){});
+    var update={lastOnline:firebase.firestore.FieldValue.serverTimestamp()};
+    db.collection('users').doc(currentUser.uid).update(update).catch(function(){});
+    // Also try to update IP if missing
+    db.collection('users').doc(currentUser.uid).get().then(function(d){
+        if(!d.exists)return;
+        var data=d.data();
+        if(data.ip)return; // already have it
+        getUserIP().then(function(ip){
+            if(ip) db.collection('users').doc(currentUser.uid).update({ip:ip}).catch(function(){});
+        });
+    }).catch(function(){});
 }
 
 function openMenuModal(){document.getElementById('menuModal').classList.add('active');}
