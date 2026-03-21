@@ -477,6 +477,10 @@ async function handleRegister(){
         var cred=await auth.createUserWithEmailAndPassword(toEmail(u),p);
         await db.collection('usernames').doc(u.toLowerCase()).set({uid:cred.user.uid});
         await db.collection('users').doc(cred.user.uid).set({username:u.toLowerCase(),displayName:'',bio:'',avatar:'',tags:[],createdAt:firebase.firestore.FieldValue.serverTimestamp(),deviceFingerprint:fp,ip:ipStr||''});
+        // Explicitly navigate — don't wait for onAuthStateChanged race
+        currentUser=cred.user;
+        document.getElementById('profileUsernameDisplay').textContent='@'+u.toLowerCase();
+        showPage('setupPage');
     }catch(e){showNotification(fbErr(e));}
     setBtn('registerBtn',false);
 }
@@ -3370,6 +3374,8 @@ loadSettings();
         var interval=setInterval(async function(){
             tries++;if(tries>40){clearInterval(interval);return;}
             if(!currentUser)return;
+            // Wait until user is on home page — not login or setup
+            if(!document.getElementById('homePage').classList.contains('active'))return;
             clearInterval(interval);
             // Look up by nameSlug + slugIndex
             var snap=await db.collection('groups').where('nameSlug','==',slug).where('slugIndex','==',idx).limit(1).get();
@@ -3391,6 +3397,7 @@ loadSettings();
         tries++;
         if(tries>40){clearInterval(interval);return;}
         if(!currentUser)return;
+        if(!document.getElementById('homePage').classList.contains('active'))return;
         clearInterval(interval);
         var udoc=await db.collection('usernames').doc(uname).get();
         if(udoc.exists) viewProfile({uid:udoc.data().uid,displayName:uname});
