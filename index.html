@@ -153,6 +153,7 @@
 <div class="menu-modal" id="menuModal">
     <div class="menu-option" onclick="openAccountsModal()">Accounts</div>
     <div class="menu-option" onclick="openSocialModal()">Social</div>
+    <div class="menu-option" onclick="openGroupsModal()">Groups</div>
 </div>
 <div class="modal" id="accountsModal">
     <div class="modal-header"><span>Friends</span><button class="modal-close" onclick="closeModal('accountsModal')">X</button></div>
@@ -194,6 +195,16 @@
         </div>
     </div>
     <div class="modal-content" id="feedContent" style="padding:0;"></div>
+</div>
+<div class="modal" id="groupsModal">
+    <div class="modal-header"><span>Groups</span><button class="modal-close" onclick="closeModal('groupsModal')">X</button></div>
+    <div class="modal-content" style="padding:0;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:3px solid #fff;">
+            <button class="btn" id="gtab_mine" onclick="switchGroupTab('mine')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:16px;background:#fff;color:#000;">My Groups</button>
+            <button class="btn" id="gtab_join" onclick="switchGroupTab('join')" style="border:none;border-radius:0;padding:16px;">Join / Create</button>
+        </div>
+        <div id="groupTabContent" style="padding:20px;"></div>
+    </div>
 </div>
 <div class="modal" id="settingsModal">
     <div class="modal-header"><span>Settings</span><button class="modal-close" onclick="closeModal('settingsModal')">X</button></div>
@@ -865,8 +876,39 @@ async function viewProfile(friend){
             var flBtn=document.createElement('button');flBtn.className='btn';flBtn.style.cssText='flex:1;padding:12px;font-size:14px;';flBtn.textContent='[Friend List]';
             flBtn.onclick=async function(){
                 var fsnap=await db.collection('users').doc(friend.uid).collection('friends').get();
-                var list=fsnap.docs.map(function(d){return '@'+d.data().username;}).join('\n');
-                alert(list||'No friends yet');
+                var flModal=document.getElementById('friendListModal');
+                if(!flModal){flModal=document.createElement('div');flModal.id='friendListModal';flModal.className='modal';flModal.style.zIndex='3000';document.body.appendChild(flModal);}
+                flModal.innerHTML='';flModal.classList.add('active');
+                var flHd=document.createElement('div');flHd.className='modal-header';flHd.innerHTML='<span>'+data.displayName+"'s Friends</span>";
+                var flCb=document.createElement('button');flCb.className='modal-close';flCb.textContent='X';flCb.onclick=function(){flModal.classList.remove('active');};flHd.appendChild(flCb);flModal.appendChild(flHd);
+                var flContent=document.createElement('div');flContent.className='modal-content';flContent.style.padding='0';
+                if(fsnap.empty){
+                    flContent.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No friends yet.</div>';
+                } else {
+                    fsnap.forEach(function(fdoc){
+                        var ff=fdoc.data();
+                        var row=document.createElement('div');
+                        row.style.cssText='display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:3px solid #fff;cursor:pointer;transition:background 0.15s;';
+                        row.onmouseenter=function(){row.style.background='#111';};
+                        row.onmouseleave=function(){row.style.background='transparent';};
+                        var avEl=document.createElement('div');avEl.style.cssText='width:44px;height:44px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:18px;background:#222;flex-shrink:0;';avEl.textContent='?';
+                        var infoEl=document.createElement('div');infoEl.style.cssText='flex:1;min-width:0;';
+                        var dn=document.createElement('div');dn.style.cssText='font-size:15px;letter-spacing:-0.5px;';dn.textContent=ff.displayName||ff.username||'?';
+                        var un=document.createElement('div');un.style.cssText='font-size:12px;color:#666;';un.textContent='@'+(ff.username||'?');
+                        infoEl.appendChild(dn);infoEl.appendChild(un);
+                        row.appendChild(avEl);row.appendChild(infoEl);
+                        row.onclick=function(){flModal.classList.remove('active');viewProfile({uid:ff.uid,displayName:ff.displayName||ff.username});};
+                        flContent.appendChild(row);
+                        if(ff.uid){
+                            db.collection('users').doc(ff.uid).get().then(function(d){
+                                if(!d.exists)return;
+                                var dd=d.data();
+                                if(dd.avatar){var img=document.createElement('img');img.src=dd.avatar;img.style.cssText='width:100%;height:100%;object-fit:cover;';avEl.innerHTML='';avEl.appendChild(img);}
+                            }).catch(function(){});
+                        }
+                    });
+                }
+                flModal.appendChild(flContent);
             };
             btnRow.appendChild(flBtn);
         }
@@ -974,7 +1016,7 @@ async function loadFeed(){
     var snap=await q.get();
     fc.innerHTML='';
     var posts=[];
-    snap.forEach(function(doc){var d=doc.data();d._id=doc.id;posts.push(d);});
+    snap.forEach(function(doc){var d=doc.data();d._id=doc.id;if(!d.type)d.type='thought';posts.push(d);});
     // Filter
     if(currentFeedFilter!=='all') posts=posts.filter(function(p){return p.type===currentFeedFilter;});
     // For status: only show own friends or public
@@ -1119,7 +1161,7 @@ async function buildFeedItem(p){
     };
     actions.appendChild(shareBtn);
 
-    // 3-dot menu — only shown to post owner
+    // 3-dot menu — shown to post owner on ALL post types
     if(p.uid===currentUser.uid){
         var dotsBtn=document.createElement('button');
         dotsBtn.style.cssText='background:#000;border:2px solid #fff;color:#fff;padding:6px 12px;cursor:pointer;font-size:18px;font-family:"Courier Prime",monospace;margin-left:auto;';
@@ -1886,11 +1928,410 @@ async function openBlockedList(){
     modal.appendChild(content);
 }
 
-// ── HELPERS ───────────────────────────────────────────────
+// ── GROUPS ────────────────────────────────────────────────
+var GROUP_COLORS=['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff6bb5','#a855f7','#fb923c','#34d399','#f472b6','#60a5fa'];
+var groupChatUnsub=null;
+
+function openGroupsModal(){
+    closeMenuModal();
+    document.getElementById('groupsModal').classList.add('active');
+    switchGroupTab('mine');
+}
+
+function switchGroupTab(tab){
+    document.getElementById('gtab_mine').style.background = tab==='mine'?'#fff':'#000';
+    document.getElementById('gtab_mine').style.color = tab==='mine'?'#000':'#fff';
+    document.getElementById('gtab_join').style.background = tab==='join'?'#fff':'#000';
+    document.getElementById('gtab_join').style.color = tab==='join'?'#000':'#fff';
+    if(tab==='mine') renderMyGroups();
+    else renderJoinCreate();
+}
+
+async function renderMyGroups(){
+    var c=document.getElementById('groupTabContent');
+    c.innerHTML='<div style="color:#666;padding:20px;text-align:center;">Loading...</div>';
+    var snap=await db.collection('groups').where('memberUids','array-contains',currentUser.uid).orderBy('createdAt','desc').get();
+    c.innerHTML='';
+    if(snap.empty){c.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No groups yet. Create or join one!</div>';return;}
+    snap.forEach(function(doc){
+        var g=doc.data();g._id=doc.id;
+        var row=document.createElement('div');
+        row.style.cssText='display:flex;align-items:center;gap:12px;padding:16px;border-bottom:3px solid #fff;cursor:pointer;transition:background 0.15s;';
+        row.onmouseenter=function(){row.style.background='#111';};
+        row.onmouseleave=function(){row.style.background='transparent';};
+        var av=document.createElement('div');
+        av.style.cssText='width:50px;height:50px;border:3px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:#222;overflow:hidden;';
+        if(g.avatar){var img=document.createElement('img');img.src=g.avatar;img.style.cssText='width:100%;height:100%;object-fit:cover;';av.appendChild(img);}
+        else{av.textContent=g.name?g.name[0].toUpperCase():'G';}
+        var info=document.createElement('div');info.style.cssText='flex:1;min-width:0;';
+        var nm=document.createElement('div');nm.style.cssText='font-size:16px;letter-spacing:-0.5px;';nm.textContent=g.name||'Group';
+        var sub=document.createElement('div');sub.style.cssText='font-size:12px;color:#666;';sub.textContent=(g.memberUids||[]).length+' members'+(g.isPublic?' · Public':' · Private');
+        info.appendChild(nm);info.appendChild(sub);
+        row.appendChild(av);row.appendChild(info);
+        row.onclick=function(){openGroupChat(g);}; 
+        c.appendChild(row);
+    });
+}
+
+function renderJoinCreate(){
+    var c=document.getElementById('groupTabContent');
+    c.innerHTML='';
+
+    // Create section
+    var createBox=document.createElement('div');createBox.style.cssText='border:3px solid #fff;padding:20px;margin-bottom:20px;';
+    var cTitle=document.createElement('div');cTitle.style.cssText='font-size:16px;margin-bottom:14px;letter-spacing:-0.5px;';cTitle.textContent='Create Group';
+    var nameInp=document.createElement('input');nameInp.type='text';nameInp.placeholder='Group name';
+    nameInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;margin-bottom:10px;";
+    var descInp=document.createElement('input');descInp.type='text';descInp.placeholder='Description (optional)';
+    descInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;margin-bottom:10px;";
+    var pubRow=document.createElement('div');pubRow.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:14px;';
+    var pubLabel=document.createElement('span');pubLabel.style.fontSize='14px';pubLabel.textContent='Public (anyone can join):';
+    var pubToggle=document.createElement('button');pubToggle.className='btn';pubToggle.style.cssText='padding:6px 14px;font-size:13px;width:60px;';pubToggle.textContent='OFF';
+    var isPublic=false;
+    pubToggle.onclick=function(){isPublic=!isPublic;pubToggle.textContent=isPublic?'ON':'OFF';pubToggle.style.background=isPublic?'#fff':'#000';pubToggle.style.color=isPublic?'#000':'#fff';};
+    pubRow.appendChild(pubLabel);pubRow.appendChild(pubToggle);
+    var createBtn=document.createElement('button');createBtn.className='btn upload-btn';createBtn.textContent='Create';
+    createBtn.onclick=async function(){
+        var name=nameInp.value.trim();
+        if(!name){showNotification('Enter a group name!');return;}
+        createBtn.disabled=true;
+        var code=Math.random().toString(36).substr(2,6).toUpperCase();
+        var myColor=GROUP_COLORS[Math.floor(Math.random()*GROUP_COLORS.length)];
+        var ref=await db.collection('groups').add({
+            name:name,description:descInp.value.trim(),
+            ownerUid:currentUser.uid,ownerUsername:currentProfile.username,
+            memberUids:[currentUser.uid],
+            members:[{uid:currentUser.uid,username:currentProfile.username,displayName:currentProfile.displayName,avatar:currentProfile.avatar||'',color:myColor}],
+            isPublic:isPublic,joinCode:code,avatar:'',
+            createdAt:firebase.firestore.FieldValue.serverTimestamp()
+        });
+        createBtn.disabled=false;
+        showNotification('Group created! Code: '+code);
+        switchGroupTab('mine');
+    };
+    createBox.appendChild(cTitle);createBox.appendChild(nameInp);createBox.appendChild(descInp);createBox.appendChild(pubRow);createBox.appendChild(createBtn);
+    c.appendChild(createBox);
+
+    // Join section
+    var joinBox=document.createElement('div');joinBox.style.cssText='border:3px solid #fff;padding:20px;margin-bottom:20px;';
+    var jTitle=document.createElement('div');jTitle.style.cssText='font-size:16px;margin-bottom:14px;letter-spacing:-0.5px;';jTitle.textContent='Join by Code';
+    var codeInp=document.createElement('input');codeInp.type='text';codeInp.placeholder='Enter join code';
+    codeInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;margin-bottom:10px;text-transform:uppercase;";
+    var joinBtn=document.createElement('button');joinBtn.className='btn upload-btn';joinBtn.textContent='Join';
+    joinBtn.onclick=async function(){
+        var code=codeInp.value.trim().toUpperCase();
+        if(!code){showNotification('Enter a code!');return;}
+        var snap=await db.collection('groups').where('joinCode','==',code).limit(1).get();
+        if(snap.empty){showNotification('Invalid code!');return;}
+        await joinGroup(snap.docs[0]);
+    };
+    joinBox.appendChild(jTitle);joinBox.appendChild(codeInp);joinBox.appendChild(joinBtn);
+    c.appendChild(joinBox);
+
+    // Public groups
+    var pubBox=document.createElement('div');pubBox.style.cssText='border:3px solid #fff;padding:20px;';
+    var pTitle=document.createElement('div');pTitle.style.cssText='font-size:16px;margin-bottom:14px;letter-spacing:-0.5px;';pTitle.textContent='Public Groups';
+    pubBox.appendChild(pTitle);
+    db.collection('groups').where('isPublic','==',true).limit(20).get().then(function(snap){
+        if(snap.empty){var empty=document.createElement('div');empty.style.cssText='color:#666;font-size:14px;';empty.textContent='No public groups yet.';pubBox.appendChild(empty);return;}
+        snap.forEach(function(doc){
+            var g=doc.data();g._id=doc.id;
+            if((g.memberUids||[]).indexOf(currentUser.uid)!==-1)return;
+            var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:2px solid #333;';
+            var nm=document.createElement('div');nm.style.cssText='flex:1;font-size:15px;';nm.textContent=g.name+(g.description?' — '+g.description:'');
+            var jBtn=document.createElement('button');jBtn.className='btn';jBtn.style.cssText='padding:8px 14px;font-size:13px;';jBtn.textContent='Join';
+            jBtn.onclick=function(){joinGroup(doc);};
+            row.appendChild(nm);row.appendChild(jBtn);pubBox.appendChild(row);
+        });
+    });
+    c.appendChild(pubBox);
+}
+
+async function joinGroup(doc){
+    var g=doc.data();var gid=doc.id;
+    if((g.memberUids||[]).indexOf(currentUser.uid)!==-1){showNotification('Already in this group!');return;}
+    var myColor=GROUP_COLORS[Math.floor(Math.random()*GROUP_COLORS.length)];
+    await db.collection('groups').doc(gid).update({
+        memberUids:firebase.firestore.FieldValue.arrayUnion(currentUser.uid),
+        members:firebase.firestore.FieldValue.arrayUnion({uid:currentUser.uid,username:currentProfile.username,displayName:currentProfile.displayName,avatar:currentProfile.avatar||'',color:myColor})
+    });
+    showNotification('Joined "'+g.name+'"!');
+    switchGroupTab('mine');
+}
+
+function openGroupChat(g){
+    if(groupChatUnsub) groupChatUnsub();
+    closeModal('groupsModal');
+
+    var cm=document.getElementById('groupChatModal');
+    if(!cm){cm=document.createElement('div');cm.id='groupChatModal';cm.className='modal';cm.style.zIndex='1500';document.body.appendChild(cm);}
+    cm.innerHTML='';cm.classList.add('active');
+
+    // Find my color
+    var myMember=(g.members||[]).find(function(m){return m.uid===currentUser.uid;});
+    var myColor=(myMember&&myMember.color)||GROUP_COLORS[0];
+    var isOwner=g.ownerUid===currentUser.uid;
+
+    // Header
+    var hd=document.createElement('div');hd.style.cssText='display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:3px solid #fff;flex-shrink:0;';
+    var backBtn=document.createElement('button');backBtn.textContent='\u2190';backBtn.style.cssText="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;font-family:'Courier Prime',monospace;";
+    backBtn.onclick=function(){cm.classList.remove('active');if(groupChatUnsub)groupChatUnsub();};hd.appendChild(backBtn);
+    var av=document.createElement('div');av.style.cssText='width:40px;height:40px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:18px;background:#222;flex-shrink:0;';
+    if(g.avatar){var avImg=document.createElement('img');avImg.src=g.avatar;avImg.style.cssText='width:100%;height:100%;object-fit:cover;';av.appendChild(avImg);}else{av.textContent=g.name?g.name[0].toUpperCase():'G';}
+    hd.appendChild(av);
+    var nameEl=document.createElement('div');nameEl.style.cssText='flex:1;';
+    var titleEl=document.createElement('div');titleEl.style.cssText='font-size:16px;letter-spacing:-0.5px;';titleEl.textContent=g.name||'Group';
+    var subEl=document.createElement('div');subEl.style.cssText='font-size:12px;color:#666;';subEl.textContent=(g.members||[]).length+' members';
+    nameEl.appendChild(titleEl);nameEl.appendChild(subEl);hd.appendChild(nameEl);
+    // Settings button
+    var settBtn=document.createElement('button');settBtn.style.cssText='background:none;border:2px solid #fff;color:#fff;padding:6px 10px;cursor:pointer;font-size:13px;font-family:"Courier Prime",monospace;';settBtn.textContent='...';
+    settBtn.onclick=function(){openGroupSettings(g,cm);};hd.appendChild(settBtn);
+    cm.appendChild(hd);
+
+    // Messages
+    var msgBox=document.createElement('div');msgBox.id='groupMsgs';msgBox.className='modal-content';msgBox.style.cssText='display:flex;flex-direction:column;padding:16px;';cm.appendChild(msgBox);
+
+    // Input bar
+    var bar=document.createElement('div');bar.style.cssText='display:flex;align-items:center;border-top:3px solid #fff;flex-shrink:0;min-height:56px;';
+    // Color indicator
+    var colorDot=document.createElement('div');colorDot.style.cssText='width:12px;height:12px;border-radius:50%;background:'+myColor+';margin:0 10px;flex-shrink:0;';bar.appendChild(colorDot);
+    // Poll button (owner only)
+    if(isOwner){
+        var pollBtn=document.createElement('button');pollBtn.style.cssText="background:#000;border:none;border-right:3px solid #fff;color:#fff;padding:0 14px;font-size:18px;cursor:pointer;height:56px;font-family:'Courier Prime',monospace;";pollBtn.textContent='\uD83D\uDCCA';
+        pollBtn.title='Create Poll';
+        pollBtn.onclick=function(){openCreatePoll(g._id);};bar.appendChild(pollBtn);
+    }
+    var inp=document.createElement('input');inp.type='text';inp.id='groupChatInput';inp.placeholder='Message '+g.name+'...';
+    inp.style.cssText="flex:1;background:#000;border:none;padding:15px;color:#fff;font-family:'Courier Prime',monospace;font-size:16px;outline:none;height:56px;";
+    inp.onkeydown=function(e){if(e.key==='Enter')sendGroupMsg(g._id,myColor,g);};bar.appendChild(inp);
+    var sendBtn=document.createElement('button');sendBtn.textContent='\u27A4';sendBtn.style.cssText="background:#fff;color:#000;border:none;border-left:3px solid #fff;padding:0 18px;font-family:'Courier Prime',monospace;font-size:18px;cursor:pointer;height:56px;";
+    sendBtn.onclick=function(){sendGroupMsg(g._id,myColor,g);};bar.appendChild(sendBtn);cm.appendChild(bar);
+
+    // Real-time messages
+    groupChatUnsub=db.collection('groups').doc(g._id).collection('messages').orderBy('timestamp')
+        .onSnapshot(function(snap){
+            msgBox.innerHTML='';
+            if(snap.empty){var e=document.createElement('div');e.style.cssText='text-align:center;color:#666;padding:40px;';e.textContent='No messages yet. Say something!';msgBox.appendChild(e);return;}
+            snap.forEach(function(doc){
+                var m=doc.data();m._gid=g._id;m._msgId=doc.id;
+                msgBox.appendChild(buildGroupMsgEl(m));
+            });
+            msgBox.scrollTop=msgBox.scrollHeight;
+        });
+    setTimeout(function(){inp.focus();},100);
+}
+
+function buildGroupMsgEl(m){
+    var mine=m.fromUid===currentUser.uid;
+    var wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:column;align-items:'+(mine?'flex-end':'flex-start')+';margin-bottom:12px;';
+
+    if(m.type==='poll'){
+        return buildPollEl(m);
+    }
+    if(m.type==='system'){
+        var sys=document.createElement('div');sys.style.cssText='text-align:center;color:#666;font-size:12px;padding:4px 0;width:100%;';sys.textContent=m.text;return sys;
+    }
+
+    // Name label (not mine)
+    if(!mine){
+        var nameLabel=document.createElement('div');nameLabel.style.cssText='font-size:12px;margin-bottom:3px;color:'+(m.color||'#fff')+';';nameLabel.textContent=m.fromDisplayName||m.fromUsername||'?';wrap.appendChild(nameLabel);
+    }
+    var bubble=document.createElement('div');
+    bubble.style.cssText='max-width:75%;border:3px solid '+(m.color||'#fff')+';padding:10px 14px;background:'+(mine?m.color||'#fff':'#000')+';color:'+(mine?'#000':'m.color'||'#fff')+";font-family:'Courier Prime',monospace;font-size:15px;word-break:break-word;";
+    if(mine) bubble.style.color='#000'; else bubble.style.color=m.color||'#fff';
+    bubble.textContent=m.text||'';
+    var time=document.createElement('div');time.style.cssText='font-size:11px;color:#555;margin-top:3px;';time.textContent=m.timestamp?new Date(m.timestamp.toDate()).toLocaleTimeString():'';
+    wrap.appendChild(bubble);wrap.appendChild(time);
+    return wrap;
+}
+
+async function sendGroupMsg(gid,myColor,g){
+    var inp=document.getElementById('groupChatInput');
+    if(!inp)return;var text=inp.value.trim();if(!text)return;inp.value='';
+    await db.collection('groups').doc(gid).collection('messages').add({
+        type:'text',text:text,fromUid:currentUser.uid,
+        fromUsername:currentProfile.username,fromDisplayName:currentProfile.displayName,
+        color:myColor,timestamp:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // Update last message
+    db.collection('groups').doc(gid).update({lastMsg:text,lastMsgTime:firebase.firestore.FieldValue.serverTimestamp()}).catch(function(){});
+}
+
+// ── POLLS ─────────────────────────────────────────────────
+function openCreatePoll(gid){
+    var overlay=document.createElement('div');overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:4000;display:flex;align-items:center;justify-content:center;';
+    var box=document.createElement('div');box.style.cssText='background:#000;border:3px solid #fff;padding:30px;width:90%;max-width:480px;display:flex;flex-direction:column;gap:12px;';
+    var title=document.createElement('div');title.style.cssText='font-size:20px;letter-spacing:-0.5px;margin-bottom:4px;';title.textContent='Create Poll';
+    var qInp=document.createElement('input');qInp.type='text';qInp.placeholder='Question e.g. "Is 1+1 = 2?"';
+    qInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:12px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;";
+    var optLabel=document.createElement('div');optLabel.style.cssText='font-size:13px;color:#666;';optLabel.textContent='Options (min 2):';
+    var optsContainer=document.createElement('div');optsContainer.style.cssText='display:flex;flex-direction:column;gap:8px;';
+    function addOptField(val){
+        var row=document.createElement('div');row.style.cssText='display:flex;gap:8px;';
+        var oi=document.createElement('input');oi.type='text';oi.placeholder='Option...';oi.value=val||'';
+        oi.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;";
+        var rm=document.createElement('button');rm.className='btn';rm.style.cssText='padding:8px 12px;font-size:13px;border-color:#f55;color:#f55;';rm.textContent='x';
+        rm.onclick=function(){row.remove();};
+        row.appendChild(oi);row.appendChild(rm);optsContainer.appendChild(row);
+    }
+    addOptField('Yes');addOptField('No');
+    var addOptBtn=document.createElement('button');addOptBtn.className='btn';addOptBtn.style.cssText='padding:8px;font-size:13px;width:100%;';addOptBtn.textContent='+ Add Option';
+    addOptBtn.onclick=function(){addOptField('');};
+    var btnRow=document.createElement('div');btnRow.style.cssText='display:flex;gap:10px;';
+    var cancelBtn=document.createElement('button');cancelBtn.className='btn';cancelBtn.style.cssText='flex:1;padding:12px;border-color:#f55;color:#f55;';cancelBtn.textContent='Cancel';cancelBtn.onclick=function(){overlay.remove();};
+    var createBtn=document.createElement('button');createBtn.className='btn';createBtn.style.cssText='flex:1;padding:12px;';createBtn.textContent='Post Poll';
+    createBtn.onclick=async function(){
+        var q=qInp.value.trim();if(!q){showNotification('Enter a question!');return;}
+        var opts=Array.from(optsContainer.querySelectorAll('input')).map(function(i){return i.value.trim();}).filter(Boolean);
+        if(opts.length<2){showNotification('Need at least 2 options!');return;}
+        var optObjs=opts.map(function(o){return{text:o,votes:[]};});
+        await db.collection('groups').doc(gid).collection('messages').add({
+            type:'poll',question:q,options:optObjs,
+            fromUid:currentUser.uid,fromDisplayName:currentProfile.displayName,
+            timestamp:firebase.firestore.FieldValue.serverTimestamp()
+        });
+        overlay.remove();showNotification('Poll posted!');
+    };
+    btnRow.appendChild(cancelBtn);btnRow.appendChild(createBtn);
+    box.appendChild(title);box.appendChild(qInp);box.appendChild(optLabel);box.appendChild(optsContainer);box.appendChild(addOptBtn);box.appendChild(btnRow);
+    overlay.appendChild(box);document.body.appendChild(overlay);
+}
+
+function buildPollEl(m){
+    var gid=m._gid||'';
+    var msgId=m._msgId||'';
+    var wrap=document.createElement('div');wrap.style.cssText='width:100%;border:3px solid #fff;padding:16px;margin-bottom:12px;';
+    var qEl=document.createElement('div');qEl.style.cssText='font-size:16px;margin-bottom:12px;letter-spacing:-0.5px;';qEl.textContent='\uD83D\uDCCA '+m.question;
+    wrap.appendChild(qEl);
+    var totalVotes=(m.options||[]).reduce(function(a,o){return a+(o.votes||[]).length;},0);
+    (m.options||[]).forEach(function(opt,idx){
+        var myVote=(opt.votes||[]).indexOf(currentUser.uid)!==-1;
+        var pct=totalVotes>0?Math.round((opt.votes||[]).length/totalVotes*100):0;
+        var row=document.createElement('div');row.style.cssText='margin-bottom:10px;cursor:pointer;';
+        var labelRow=document.createElement('div');labelRow.style.cssText='display:flex;justify-content:space-between;margin-bottom:4px;font-size:14px;';
+        var lText=document.createElement('span');lText.textContent=(myVote?'\u2713 ':'')+opt.text;lText.style.color=myVote?'#6bcb77':'#fff';
+        var rText=document.createElement('span');rText.style.color='#aaa';rText.textContent=(opt.votes||[]).length+' vote'+(opt.votes.length!==1?'s':'')+' ('+pct+'%)';
+        labelRow.appendChild(lText);labelRow.appendChild(rText);
+        // Bar
+        var bar=document.createElement('div');bar.style.cssText='width:100%;height:8px;background:#222;border:1px solid #444;';
+        var fill=document.createElement('div');fill.style.cssText='height:100%;background:'+(myVote?'#6bcb77':'#fff')+';width:'+pct+'%;transition:width 0.3s;';
+        bar.appendChild(fill);
+        row.appendChild(labelRow);row.appendChild(bar);
+        row.onclick=async function(){
+            if(!gid||!msgId)return;
+            // Toggle vote
+            var ref=db.collection('groups').doc(gid).collection('messages').doc(msgId);
+            var docSnap=await ref.get();if(!docSnap.exists)return;
+            var data=docSnap.data();
+            var newOpts=data.options.map(function(o2,i2){
+                var v=o2.votes||[];
+                if(i2===idx){
+                    if(v.indexOf(currentUser.uid)!==-1) v=v.filter(function(x){return x!==currentUser.uid;});
+                    else v=v.concat([currentUser.uid]);
+                } else {
+                    // remove vote from other options (single-choice)
+                    v=v.filter(function(x){return x!==currentUser.uid;});
+                }
+                return Object.assign({},o2,{votes:v});
+            });
+            await ref.update({options:newOpts});
+        };
+        wrap.appendChild(row);
+    });
+    var meta=document.createElement('div');meta.style.cssText='font-size:11px;color:#555;margin-top:8px;';meta.textContent='Poll by '+m.fromDisplayName;wrap.appendChild(meta);
+    return wrap;
+}
+
+// ── GROUP SETTINGS ────────────────────────────────────────
+function openGroupSettings(g,parentModal){
+    var isOwner=g.ownerUid===currentUser.uid;
+    var overlay=document.createElement('div');overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:3500;display:flex;align-items:center;justify-content:center;';
+    var box=document.createElement('div');box.style.cssText='background:#000;border:3px solid #fff;width:90%;max-width:480px;max-height:80vh;overflow-y:auto;display:flex;flex-direction:column;';
+    var hd=document.createElement('div');hd.style.cssText='padding:16px 20px;border-bottom:3px solid #fff;display:flex;justify-content:space-between;align-items:center;font-size:18px;letter-spacing:-0.5px;';
+    hd.innerHTML='<span>Group Settings</span>';
+    var closeBtn=document.createElement('button');closeBtn.style.cssText="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;font-family:'Courier Prime',monospace;";closeBtn.textContent='X';closeBtn.onclick=function(){overlay.remove();};hd.appendChild(closeBtn);box.appendChild(hd);
+    var content=document.createElement('div');content.style.cssText='padding:20px;display:flex;flex-direction:column;gap:14px;';
+
+    // Group name (owner only)
+    if(isOwner){
+        var nmRow=document.createElement('div');
+        var nmLabel=document.createElement('div');nmLabel.style.cssText='font-size:12px;color:#666;margin-bottom:4px;';nmLabel.textContent='Group Name';
+        var nmInp=document.createElement('input');nmInp.type='text';nmInp.value=g.name||'';
+        nmInp.style.cssText="width:100%;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;margin-bottom:8px;";
+        var nmBtn=document.createElement('button');nmBtn.className='btn';nmBtn.style.cssText='width:100%;padding:10px;';nmBtn.textContent='Save Name';
+        nmBtn.onclick=async function(){var n=nmInp.value.trim();if(!n)return;await db.collection('groups').doc(g._id).update({name:n});g.name=n;showNotification('Name updated!');};
+        nmRow.appendChild(nmLabel);nmRow.appendChild(nmInp);nmRow.appendChild(nmBtn);content.appendChild(nmRow);
+
+        // Join code
+        var codeRow=document.createElement('div');codeRow.style.cssText='border:2px solid #fff;padding:12px;';
+        codeRow.innerHTML='<div style="font-size:12px;color:#666;margin-bottom:4px;">Join Code</div><div style="font-size:20px;letter-spacing:4px;">'+g.joinCode+'</div>';
+        content.appendChild(codeRow);
+    }
+
+    // My color
+    var colorRow=document.createElement('div');
+    var myMember=(g.members||[]).find(function(m){return m.uid===currentUser.uid;});
+    var currentColor=(myMember&&myMember.color)||GROUP_COLORS[0];
+    var colorLabel=document.createElement('div');colorLabel.style.cssText='font-size:12px;color:#666;margin-bottom:8px;';colorLabel.textContent='My Name Color';
+    var colorGrid=document.createElement('div');colorGrid.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:8px;';
+    GROUP_COLORS.forEach(function(col){
+        var swatch=document.createElement('div');
+        swatch.style.cssText='height:32px;cursor:pointer;border:3px solid '+(col===currentColor?'#fff':'transparent')+';background:'+col+';';
+        swatch.onclick=async function(){
+            currentColor=col;
+            colorGrid.querySelectorAll('div').forEach(function(s){s.style.borderColor='transparent';});
+            swatch.style.borderColor='#fff';
+            var newMembers=(g.members||[]).map(function(m){return m.uid===currentUser.uid?Object.assign({},m,{color:col}):m;});
+            await db.collection('groups').doc(g._id).update({members:newMembers});
+            g.members=newMembers;showNotification('Color updated!');
+        };
+        colorGrid.appendChild(swatch);
+    });
+    colorRow.appendChild(colorLabel);colorRow.appendChild(colorGrid);content.appendChild(colorRow);
+
+    // Members list
+    var memLabel=document.createElement('div');memLabel.style.cssText='font-size:14px;letter-spacing:-0.5px;border-top:2px solid #333;padding-top:12px;';memLabel.textContent='Members';content.appendChild(memLabel);
+    (g.members||[]).forEach(function(mem){
+        var mRow=document.createElement('div');mRow.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #222;';
+        var dot=document.createElement('div');dot.style.cssText='width:12px;height:12px;border-radius:50%;background:'+(mem.color||'#fff')+';flex-shrink:0;';
+        var mName=document.createElement('div');mName.style.cssText='flex:1;font-size:14px;color:'+(mem.color||'#fff')+';';mName.textContent=mem.displayName+' @'+mem.username+(mem.uid===g.ownerUid?' [Owner]':'');
+        mRow.appendChild(dot);mRow.appendChild(mName);
+        if(isOwner&&mem.uid!==currentUser.uid){
+            var kickBtn=document.createElement('button');kickBtn.className='btn';kickBtn.style.cssText='padding:4px 10px;font-size:12px;border-color:#f55;color:#f55;';kickBtn.textContent='Kick';
+            kickBtn.onclick=async function(){
+                var newMembers=(g.members||[]).filter(function(m){return m.uid!==mem.uid;});
+                var newUids=(g.memberUids||[]).filter(function(u){return u!==mem.uid;});
+                await db.collection('groups').doc(g._id).update({members:newMembers,memberUids:newUids});
+                mRow.remove();showNotification(mem.username+' kicked.');
+            };
+            mRow.appendChild(kickBtn);
+        }
+        content.appendChild(mRow);
+    });
+
+    // Leave / Delete
+    var leaveBtn=document.createElement('button');leaveBtn.className='btn';leaveBtn.style.cssText='width:100%;padding:12px;border-color:#fa0;color:#fa0;margin-top:8px;';
+    leaveBtn.textContent=isOwner?'Delete Group':'Leave Group';
+    leaveBtn.onclick=async function(){
+        if(!confirm(isOwner?'Delete this group?':'Leave this group?'))return;
+        if(isOwner){
+            await db.collection('groups').doc(g._id).delete();
+        } else {
+            var nm=(g.members||[]).filter(function(m){return m.uid!==currentUser.uid;});
+            var nu=(g.memberUids||[]).filter(function(u){return u!==currentUser.uid;});
+            await db.collection('groups').doc(g._id).update({members:nm,memberUids:nu});
+        }
+        overlay.remove();parentModal.classList.remove('active');if(groupChatUnsub)groupChatUnsub();showNotification(isOwner?'Group deleted.':'Left group.');
+    };
+    content.appendChild(leaveBtn);
+    box.appendChild(content);overlay.appendChild(box);document.body.appendChild(overlay);
+}
+
 function openMenuModal(){document.getElementById('menuModal').classList.add('active');}
 function closeMenuModal(){document.getElementById('menuModal').classList.remove('active');}
 function openAccountsModal(){closeMenuModal();generateAccountsList();document.getElementById('accountsModal').classList.add('active');}
 function openSocialModal(){closeMenuModal();selectPostType('pic');document.getElementById('socialModal').classList.add('active');}
+function openGroupsModalFn(){closeMenuModal();openGroupsModal();}
 function closeModal(id){document.getElementById(id).classList.remove('active');closeMenuModal();}
 function setBtn(id,d){var b=document.getElementById(id);if(b)b.disabled=d;}
 function fbErr(e){var m={'auth/email-already-in-use':'Username already taken!','auth/user-not-found':'Account not found!','auth/wrong-password':'Wrong PIN!','auth/invalid-credential':'Wrong username or PIN!','auth/too-many-requests':'Too many attempts. Try later.','auth/weak-password':'PIN too short (min 6)'};return m[e.code]||e.message;}
