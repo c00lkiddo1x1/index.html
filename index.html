@@ -2276,43 +2276,79 @@ function switchGroupTab(tab){
 async function renderMyGroups(){
     var c=document.getElementById('groupTabContent');
     c.innerHTML='<div style="color:#666;padding:20px;text-align:center;">Loading...</div>';
-    // No orderBy to avoid composite index requirement
     var snap=await db.collection('groups').where('memberUids','array-contains',currentUser.uid).get();
     c.innerHTML='';
-    if(snap.empty){c.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No groups yet. Create or join one!</div>';return;}
     var groups=[];
-    snap.forEach(function(doc){var g=doc.data();g._id=doc.id;groups.push(g);});
-    // Sort client-side by lastMsgTime or createdAt descending
+    snap.forEach(function(doc){var g=doc.data();g._id=doc.id;g._isMember=true;groups.push(g);});
     groups.sort(function(a,b){
         var at=(a.lastMsgTime&&a.lastMsgTime.toDate?a.lastMsgTime.toDate().getTime():0)||(a.createdAt&&a.createdAt.toDate?a.createdAt.toDate().getTime():0);
         var bt=(b.lastMsgTime&&b.lastMsgTime.toDate?b.lastMsgTime.toDate().getTime():0)||(b.createdAt&&b.createdAt.toDate?b.createdAt.toDate().getTime():0);
         return bt-at;
     });
-    groups.forEach(function(g){
-        var row=document.createElement('div');
-        row.style.cssText='display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center;padding:15px;border-bottom:3px solid #fff;cursor:pointer;transition:background 0.15s;';
-        row.onmouseenter=function(){row.style.background='#111';};
-        row.onmouseleave=function(){row.style.background='transparent';};
-        // Avatar
-        var av=document.createElement('div');
-        av.style.cssText='width:60px;height:60px;border:3px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px;background:#222;overflow:hidden;';
-        if(g.avatar){var img=document.createElement('img');img.src=g.avatar;img.style.cssText='width:100%;height:100%;object-fit:cover;';av.appendChild(img);}
-        else{
-            var letter=document.createElement('div');letter.style.cssText='font-size:24px;color:#fff;';letter.textContent=g.name?g.name[0].toUpperCase():'G';
-            av.appendChild(letter);
-        }
-        // Info
-        var info=document.createElement('div');info.className='chat-info';
-        var nm=document.createElement('div');nm.className='chat-name';nm.textContent=g.name||'Group';
-        var sub=document.createElement('div');sub.className='chat-preview';
-        sub.textContent=g.lastMsg||(((g.memberUids||[]).length)+' members'+(g.isPublic?' · Public':' · Private'));
-        // Group streak
-        var streakEl=getGroupStreakEl(g);
-        info.appendChild(nm);if(streakEl)info.appendChild(streakEl);info.appendChild(sub);
-        row.appendChild(av);row.appendChild(info);
-        row.onclick=function(){openGroupChat(g);};
-        c.appendChild(row);
-    });
+    if(groups.length===0){c.innerHTML='<div style="padding:40px;text-align:center;color:#666;">No groups yet. Create or join one!</div>';return;}
+    groups.forEach(function(g){renderGroupRow(c,g,true);});
+}
+
+function renderGroupRow(container,g,isMember){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:3px solid #fff;transition:background 0.15s;';
+    row.onmouseenter=function(){row.style.background='#111';};
+    row.onmouseleave=function(){row.style.background='transparent';};
+
+    // Avatar
+    var av=document.createElement('div');
+    av.style.cssText='width:54px;height:54px;border:3px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:#222;overflow:hidden;cursor:pointer;';
+    if(g.avatar){var img=document.createElement('img');img.src=g.avatar;img.style.cssText='width:100%;height:100%;object-fit:cover;';av.appendChild(img);}
+    else{var letter=document.createElement('div');letter.style.cssText='font-size:22px;color:#fff;';letter.textContent=g.name?g.name[0].toUpperCase():'G';av.appendChild(letter);}
+
+    // Info
+    var info=document.createElement('div');info.style.cssText='flex:1;min-width:0;cursor:pointer;';
+    var nm=document.createElement('div');nm.className='chat-name';nm.textContent=g.name||'Group';
+    var sub=document.createElement('div');sub.className='chat-preview';
+    sub.textContent=g.lastMsg||(((g.memberUids||[]).length)+' members'+(g.isPublic?' · Public':' · Private'));
+    var streakEl=isMember?getGroupStreakEl(g):null;
+    info.appendChild(nm);if(streakEl)info.appendChild(streakEl);info.appendChild(sub);
+
+    // Click info/avatar to preview or open
+    var onInfoClick=function(){
+        if(isMember) openGroupChat(g);
+        else showGroupPreview(g,container);
+    };
+    av.onclick=onInfoClick;info.onclick=onInfoClick;
+
+    row.appendChild(av);row.appendChild(info);
+
+    // Right side button
+    if(isMember){
+        var openBtn=document.createElement('button');openBtn.className='btn';openBtn.style.cssText='padding:8px 14px;font-size:13px;flex-shrink:0;';openBtn.textContent='Open';
+        openBtn.onclick=function(){openGroupChat(g);};
+        row.appendChild(openBtn);
+    } else {
+        var joinBtn=document.createElement('button');joinBtn.className='btn';joinBtn.style.cssText='padding:8px 14px;font-size:13px;flex-shrink:0;border-color:#6bcb77;color:#6bcb77;';joinBtn.textContent='Join';
+        joinBtn.onclick=async function(){
+            if((g.bannedUids||[]).indexOf(currentUser.uid)!==-1){showNotification('You are banned from this group.');return;}
+            var gdoc=await db.collection('groups').doc(g._id).get();
+            await joinGroup(gdoc);
+            row.remove();
+        };
+        row.appendChild(joinBtn);
+    }
+    container.appendChild(row);
+}
+
+async function showGroupPreview(g,container){
+    // Show a small preview card inline
+    var existing=document.getElementById('groupPreview_'+g._id);if(existing){existing.remove();return;}
+    var card=document.createElement('div');card.id='groupPreview_'+g._id;
+    card.style.cssText='background:#111;border:3px solid #fff;padding:16px;margin:0;';
+    card.innerHTML='<div style="font-size:14px;letter-spacing:-0.5px;margin-bottom:6px;">'+g.name+'</div>'
+        +'<div style="font-size:12px;color:#666;margin-bottom:8px;">'+(g.description||'')+' · '+(g.memberUids||[]).length+' members · '+(g.isPublic?'Public':'Private')+'</div>';
+    // Insert after the row that was clicked
+    var rows=container.querySelectorAll('div[style*="border-bottom"]');
+    var targetRow;
+    rows.forEach(function(r){if(r.querySelector('.chat-name')&&r.querySelector('.chat-name').textContent===g.name)targetRow=r;});
+    if(targetRow&&targetRow.nextSibling) container.insertBefore(card,targetRow.nextSibling);
+    else container.appendChild(card);
 }
 
 function renderJoinCreate(){
@@ -2402,18 +2438,23 @@ async function joinGroup(doc){
     switchGroupTab('mine');
 }
 
-function openGroupChat(g){
+async function openGroupChat(g){
     if(groupChatUnsub) groupChatUnsub();
     closeModal('groupsModal');
+
+    // Always fetch fresh group data so messages and membership are up to date
+    var gdoc=await db.collection('groups').doc(g._id).get();
+    if(!gdoc.exists){showNotification('Group not found');return;}
+    g=gdoc.data();g._id=gdoc.id;
+
+    var isMember=(g.memberUids||[]).indexOf(currentUser.uid)!==-1;
+    var myMember=(g.members||[]).find(function(m){return m.uid===currentUser.uid;});
+    var myColor=(myMember&&myMember.color)||GROUP_COLORS[0];
+    var isOwner=g.ownerUid===currentUser.uid;
 
     var cm=document.getElementById('groupChatModal');
     if(!cm){cm=document.createElement('div');cm.id='groupChatModal';cm.className='modal';cm.style.zIndex='1500';document.body.appendChild(cm);}
     cm.innerHTML='';cm.classList.add('active');
-
-    // Find my color
-    var myMember=(g.members||[]).find(function(m){return m.uid===currentUser.uid;});
-    var myColor=(myMember&&myMember.color)||GROUP_COLORS[0];
-    var isOwner=g.ownerUid===currentUser.uid;
 
     // Header
     var hd=document.createElement('div');hd.style.cssText='display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:3px solid #fff;flex-shrink:0;';
@@ -2433,9 +2474,11 @@ function openGroupChat(g){
     linkEl.onclick=function(e){e.stopPropagation();navigator.clipboard.writeText(groupLink).then(function(){showNotification('Group link copied!');});};
     var subEl=document.createElement('div');subEl.style.cssText='font-size:12px;color:#666;';subEl.textContent=(g.members||[]).length+' members';
     nameEl.appendChild(titleEl);nameEl.appendChild(linkEl);nameEl.appendChild(subEl);hd.appendChild(nameEl);
-    // Settings button
-    var settBtn=document.createElement('button');settBtn.style.cssText='background:none;border:2px solid #fff;color:#fff;padding:6px 10px;cursor:pointer;font-size:13px;font-family:"Courier Prime",monospace;';settBtn.textContent='...';
-    settBtn.onclick=function(){openGroupSettings(g,cm);};hd.appendChild(settBtn);
+    // Settings button — visible to all members, but owner-only controls are inside
+    if(isMember){
+        var settBtn=document.createElement('button');settBtn.style.cssText='background:none;border:2px solid #fff;color:#fff;padding:6px 10px;cursor:pointer;font-size:13px;font-family:"Courier Prime",monospace;';settBtn.textContent='...';
+        settBtn.onclick=function(){openGroupSettings(g,cm);};hd.appendChild(settBtn);
+    }
     // Voice call button
     var gVoiceBtn=document.createElement('button');
     gVoiceBtn.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.5a16 16 0 0 0 5.59 5.59l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16.92z"></path></svg>';
@@ -2453,8 +2496,24 @@ function openGroupChat(g){
     // Messages
     var msgBox=document.createElement('div');msgBox.id='groupMsgs';msgBox.className='modal-content';msgBox.style.cssText='display:flex;flex-direction:column;padding:16px;';cm.appendChild(msgBox);
 
-    // Input bar
+    // Input bar — show join prompt if not a member
     var bar=document.createElement('div');bar.style.cssText='display:flex;align-items:center;border-top:3px solid #fff;flex-shrink:0;min-height:56px;';
+    if(!isMember){
+        // Join banner instead of input
+        var joinPrompt=document.createElement('div');joinPrompt.style.cssText='flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 16px;';
+        var joinTxt=document.createElement('span');joinTxt.style.cssText='font-size:14px;color:#aaa;';joinTxt.textContent='You are not in this group.';
+        var joinNowBtn=document.createElement('button');joinNowBtn.className='btn';joinNowBtn.style.cssText='padding:10px 20px;border-color:#6bcb77;color:#6bcb77;font-size:14px;';joinNowBtn.textContent='Join';
+        joinNowBtn.onclick=async function(){
+            if((g.bannedUids||[]).indexOf(currentUser.uid)!==-1){showNotification('You are banned from this group.');return;}
+            var gdoc2=await db.collection('groups').doc(g._id).get();
+            await joinGroup(gdoc2);
+            // Re-open with membership
+            cm.classList.remove('active');
+            setTimeout(function(){openGroupChat(g);},300);
+        };
+        joinPrompt.appendChild(joinTxt);joinPrompt.appendChild(joinNowBtn);bar.appendChild(joinPrompt);
+        cm.appendChild(bar);
+    } else {
     // Color indicator dot
     var colorDot=document.createElement('div');colorDot.style.cssText='width:12px;height:12px;border-radius:50%;background:'+myColor+';margin:0 8px;flex-shrink:0;';bar.appendChild(colorDot);
     // File attach button
@@ -2489,16 +2548,21 @@ function openGroupChat(g){
     var gStickerBtn=document.createElement('button');gStickerBtn.textContent='\uD83D\uDE04';gStickerBtn.style.cssText="background:#000;border:none;border-left:3px solid #fff;color:#fff;padding:0 14px;font-size:20px;cursor:pointer;height:56px;";
     gStickerBtn.onclick=function(){openStickerPicker(function(item){sendGroupSticker(g._id,myColor,g,item);});};
     bar.appendChild(gStickerBtn);bar.appendChild(sendBtn);cm.appendChild(bar);
+    } // end isMember else
 
-    // Real-time messages
-    groupChatUnsub=db.collection('groups').doc(g._id).collection('messages').orderBy('timestamp')
+    // Real-time messages — no orderBy to avoid composite index; sort client-side
+    groupChatUnsub=db.collection('groups').doc(g._id).collection('messages')
         .onSnapshot(function(snap){
             msgBox.innerHTML='';
             if(snap.empty){var e=document.createElement('div');e.style.cssText='text-align:center;color:#666;padding:40px;';e.textContent='No messages yet. Say something!';msgBox.appendChild(e);return;}
-            snap.forEach(function(doc){
-                var m=doc.data();m._gid=g._id;m._msgId=doc.id;
-                msgBox.appendChild(buildGroupMsgEl(m));
+            var msgs=[];
+            snap.forEach(function(doc){var m=doc.data();m._gid=g._id;m._msgId=doc.id;msgs.push(m);});
+            msgs.sort(function(a,b){
+                var at=a.timestamp&&a.timestamp.toDate?a.timestamp.toDate().getTime():0;
+                var bt=b.timestamp&&b.timestamp.toDate?b.timestamp.toDate().getTime():0;
+                return at-bt;
             });
+            msgs.forEach(function(m){msgBox.appendChild(buildGroupMsgEl(m));});
             msgBox.scrollTop=msgBox.scrollHeight;
         });
     setTimeout(function(){inp.focus();},100);
