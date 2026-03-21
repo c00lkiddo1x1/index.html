@@ -364,8 +364,23 @@ auth.onAuthStateChanged(async function(user){
     if(user){
         currentUser=user;
         var doc=await db.collection('users').doc(user.uid).get();
-        if(doc.exists&&doc.data().displayName){
-            currentProfile=doc.data();
+        if(!doc.exists){showPage('loginPage');return;}
+        var data=doc.data();
+        // Check ban
+        if(data.banned){
+            var banExpiry=data.banExpiry;
+            var now=Date.now();
+            if(!banExpiry||banExpiry==='forever'||banExpiry>now){
+                showBanScreen(data.banReason||'No reason given.',data.banType||'ban',data.banExpiry,data.banDurationLabel||'Forever');
+                return;
+            } else {
+                // Ban expired - unban
+                await db.collection('users').doc(user.uid).update({banned:false,banExpiry:null,banReason:null,banType:null});
+                data.banned=false;
+            }
+        }
+        if(data.displayName){
+            currentProfile=data;
             showPage('homePage'); loadFriends(); listenForCall(); listenForFriendRequests(); applyTags();
         } else {
             document.getElementById('profileUsernameDisplay').textContent='@'+user.email.replace('@usen.app','');
@@ -395,10 +410,17 @@ async function handleRegister(){
     setBtn('registerBtn',true);
     var taken=await db.collection('usernames').doc(u.toLowerCase()).get();
     if(taken.exists){showNotification('Username taken!');setBtn('registerBtn',false);return;}
+    // Check IP ban and device ban before registering
+    var fp=getDeviceFingerprint();
+    var ipStr=await getUserIP();
+    var devBan=await db.collection('bans').doc('device_'+fp).get();
+    if(devBan.exists){showNotification('This device is banned.');setBtn('registerBtn',false);return;}
+    if(ipStr){var ipBan=await db.collection('bans').doc('ip_'+ipStr.replace(/\./g,'_')).get();
+    if(ipBan.exists){var ib=ipBan.data();if(!ib.expiry||ib.expiry>Date.now()){showNotification('This IP is banned.');setBtn('registerBtn',false);return;}}}
     try{
         var cred=await auth.createUserWithEmailAndPassword(toEmail(u),p);
         await db.collection('usernames').doc(u.toLowerCase()).set({uid:cred.user.uid});
-        await db.collection('users').doc(cred.user.uid).set({username:u.toLowerCase(),displayName:'',bio:'',avatar:'',tags:[],createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+        await db.collection('users').doc(cred.user.uid).set({username:u.toLowerCase(),displayName:'',bio:'',avatar:'',tags:[],createdAt:firebase.firestore.FieldValue.serverTimestamp(),deviceFingerprint:fp,ip:ipStr||''});
     }catch(e){showNotification(fbErr(e));}
     setBtn('registerBtn',false);
 }
@@ -1437,6 +1459,52 @@ async function submitPost(type){
 }
 
 // ── ADMIN PANEL ───────────────────────────────────────────
+// ── DEVICE FINGERPRINT & IP ───────────────────────────────
+function getDeviceFingerprint(){
+    var nav=window.navigator;
+    var parts=[nav.userAgent,nav.language,screen.width+'x'+screen.height,screen.colorDepth,new Date().getTimezoneOffset(),nav.hardwareConcurrency||0,nav.deviceMemory||0];
+    var hash=0;
+    var str=parts.join('|');
+    for(var i=0;i<str.length;i++){hash=((hash<<5)-hash)+str.charCodeAt(i);hash|=0;}
+    return 'fp_'+Math.abs(hash).toString(36);
+}
+async function getUserIP(){
+    try{
+        var r=await fetch('https://api.ipify.org?format=json');
+        var d=await r.json();
+        return d.ip||'';
+    }catch(e){return '';}
+}
+
+// ── BAN SCREEN ────────────────────────────────────────────
+function showBanScreen(reason,banType,expiry,durationLabel){
+    var overlay=document.createElement('div');overlay.id='banOverlay';
+    overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:#000;border:3px solid #f00;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;';
+    var box=document.createElement('div');
+    box.style.cssText='border:3px solid #f55;padding:40px;max-width:500px;width:90%;display:flex;flex-direction:column;gap:16px;';
+    var title=document.createElement('div');title.style.cssText='font-size:26px;color:#f55;letter-spacing:-1px;text-align:center;';
+    title.textContent='You Have Been Banned';
+    var typeEl=document.createElement('div');typeEl.style.cssText='font-size:13px;color:#666;text-align:center;border-top:2px solid #333;padding-top:12px;';
+    typeEl.textContent=banType==='ipban'?'IP Ban':banType==='deviceban'?'Device Ban':'Account Ban';
+    var reasonBox=document.createElement('div');reasonBox.style.cssText='border:2px solid #f55;padding:14px;';
+    var rLabel=document.createElement('div');rLabel.style.cssText='font-size:12px;color:#666;margin-bottom:6px;';rLabel.textContent='Reason:';
+    var rVal=document.createElement('div');rVal.style.cssText='font-size:16px;color:#fff;word-break:break-word;';rVal.textContent=reason||'No reason given.';
+    reasonBox.appendChild(rLabel);reasonBox.appendChild(rVal);
+    var timeBox=document.createElement('div');timeBox.style.cssText='border:2px solid #f55;padding:14px;';
+    var tLabel=document.createElement('div');tLabel.style.cssText='font-size:12px;color:#666;margin-bottom:6px;';tLabel.textContent='Duration:';
+    var tVal=document.createElement('div');tVal.style.cssText='font-size:16px;color:#fff;';
+    if(!expiry||expiry==='forever'){tVal.textContent='Permanent';}
+    else{var ms=expiry-Date.now();var days=Math.ceil(ms/86400000);tVal.textContent=days>0?days+' day(s) remaining':'Expired';}
+    if(durationLabel)tVal.textContent+=' ('+durationLabel+')';
+    timeBox.appendChild(tLabel);timeBox.appendChild(tVal);
+    var okBtn=document.createElement('button');okBtn.className='btn';okBtn.style.cssText='padding:14px;font-size:16px;border-color:#f55;color:#f55;margin-top:8px;';okBtn.textContent='Ok';
+    okBtn.onclick=function(){auth.signOut();overlay.remove();};
+    box.appendChild(title);box.appendChild(typeEl);box.appendChild(reasonBox);box.appendChild(timeBox);box.appendChild(okBtn);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+}
+
+// ── ADMIN PANEL ───────────────────────────────────────────
 async function openAdminPanel(){
     var modal=document.getElementById('adminModal');
     if(!modal){modal=document.createElement('div');modal.id='adminModal';modal.className='modal';modal.style.zIndex='3000';document.body.appendChild(modal);}
@@ -1445,7 +1513,6 @@ async function openAdminPanel(){
     var cb=document.createElement('button');cb.className='modal-close';cb.textContent='X';cb.onclick=function(){modal.classList.remove('active');};hd.appendChild(cb);modal.appendChild(hd);
     var content=document.createElement('div');content.className='modal-content';
 
-    // Search user
     var searchRow=document.createElement('div');searchRow.style.cssText='display:flex;gap:10px;margin-bottom:20px;';
     var searchInp=document.createElement('input');searchInp.type='text';searchInp.placeholder='@username to manage';
     searchInp.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:15px;";
@@ -1462,70 +1529,117 @@ async function openAdminPanel(){
         var data=userDoc.data();
         targetArea.innerHTML='';
 
-        var info=document.createElement('div');info.style.cssText='border:3px solid #fff;padding:15px;margin-bottom:15px;';
-        info.innerHTML='<div style="font-size:16px;margin-bottom:4px;">'+data.displayName+'</div><div style="color:#aaa;font-size:13px;">@'+data.username+'</div><div style="margin-top:8px;">'+renderTags(data.tags||[])+'</div>';
+        // User info card
+        var info=document.createElement('div');
+        info.style.cssText='border:3px solid #fff;padding:15px;margin-bottom:15px;';
+        var isBanned=data.banned;
+        info.innerHTML='<div style="font-size:16px;margin-bottom:4px;color:'+(isBanned?'#f55':'#fff')+';">'+data.displayName+(isBanned?' [BANNED]':'')+'</div>'
+            +'<div style="color:#aaa;font-size:13px;">@'+data.username+'</div>'
+            +'<div style="margin-top:8px;">'+renderTags(data.tags||[])+'</div>'
+            +(data.ip?'<div style="font-size:11px;color:#555;margin-top:4px;">IP: '+data.ip+'</div>':'');
         targetArea.appendChild(info);
 
-        // Actions
-        var actions=[
-            {label:'Ban User',color:'#f55',fn:async function(){
-                await db.collection('users').doc(uid).update({banned:true});
-                showNotification('@'+uname+' banned.');
-            }},
-            {label:'Unban User',color:'#5f5',fn:async function(){
-                await db.collection('users').doc(uid).update({banned:false});
-                showNotification('@'+uname+' unbanned.');
-            }},
-        ];
-        actions.forEach(function(a){
-            var btn=document.createElement('button');btn.className='btn';btn.style.cssText='width:100%;margin-bottom:8px;border-color:'+a.color+';color:'+a.color+';padding:12px;';
-            btn.textContent=a.label;btn.onclick=a.fn;targetArea.appendChild(btn);
-        });
+        // ── BAN SECTION ──
+        var banSection=document.createElement('div');
+        banSection.style.cssText='border:3px solid #f55;padding:16px;margin-bottom:14px;';
+        var banTitle=document.createElement('div');banTitle.style.cssText='font-size:14px;color:#f55;margin-bottom:12px;letter-spacing:-0.5px;';banTitle.textContent='BAN CONTROLS';
+        banSection.appendChild(banTitle);
 
-        // Give tag
+        // Reason input
+        var rLabel=document.createElement('div');rLabel.style.cssText='font-size:12px;color:#666;margin-bottom:4px;';rLabel.textContent='Reason:';
+        var reasonInp=document.createElement('input');reasonInp.type='text';reasonInp.placeholder='e.g. Bad behavior';
+        reasonInp.style.cssText="width:100%;background:#000;border:2px solid #f55;padding:10px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;margin-bottom:10px;";
+        banSection.appendChild(rLabel);banSection.appendChild(reasonInp);
+
+        // Duration picker
+        var dLabel=document.createElement('div');dLabel.style.cssText='font-size:12px;color:#666;margin-bottom:4px;';dLabel.textContent='Duration:';
+        var durSel=document.createElement('select');
+        durSel.style.cssText="width:100%;background:#000;border:2px solid #f55;color:#fff;padding:10px;font-family:'Courier Prime',monospace;font-size:14px;margin-bottom:12px;";
+        var durations=[
+            {label:'1 Hour',ms:3600000},{label:'12 Hours',ms:43200000},
+            {label:'1 Day',ms:86400000},{label:'2 Days',ms:172800000},
+            {label:'3 Days',ms:259200000},{label:'7 Days',ms:604800000},
+            {label:'30 Days',ms:2592000000},{label:'Forever',ms:0}
+        ];
+        durations.forEach(function(d){var o=document.createElement('option');o.value=d.ms;o.textContent=d.label;durSel.appendChild(o);});
+        banSection.appendChild(dLabel);banSection.appendChild(durSel);
+
+        // Ban type buttons row
+        var banBtnRow=document.createElement('div');banBtnRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap;';
+
+        async function doBan(banType){
+            var reason=reasonInp.value.trim()||'No reason given.';
+            var durMs=parseInt(durSel.value);
+            var durLabel=durSel.options[durSel.selectedIndex].text;
+            var expiry=durMs===0?'forever':Date.now()+durMs;
+            var update={banned:true,banReason:reason,banType:banType,banExpiry:expiry,banDurationLabel:durLabel,displayName:'[User Has Been Banned.]'};
+            await db.collection('users').doc(uid).update(update);
+            // Update display name color flag
+            if(banType==='ipban'&&data.ip){
+                var ipKey='ip_'+data.ip.replace(/\./g,'_');
+                await db.collection('bans').doc(ipKey).set({ip:data.ip,uid:uid,reason:reason,expiry:expiry===0?'forever':Date.now()+44*86400000,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+            }
+            if(banType==='deviceban'&&data.deviceFingerprint){
+                await db.collection('bans').doc('device_'+data.deviceFingerprint).set({fp:data.deviceFingerprint,uid:uid,reason:reason,expiry:'forever',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+            }
+            info.querySelector('div:first-child').style.color='#f55';
+            info.querySelector('div:first-child').textContent='[User Has Been Banned.] @'+data.username;
+            showNotification('@'+uname+' banned ('+banType+').');
+        }
+
+        var banTypes=[
+            {label:'Account Ban',type:'ban',color:'#fa0'},
+            {label:'IP Ban (44d)',type:'ipban',color:'#f55'},
+            {label:'Device Ban (Forever)',type:'deviceban',color:'#f00'}
+        ];
+        banTypes.forEach(function(bt){
+            var btn=document.createElement('button');btn.className='btn';
+            btn.style.cssText='flex:1;padding:10px 6px;font-size:12px;border-color:'+bt.color+';color:'+bt.color+';';
+            btn.textContent=bt.label;
+            btn.onclick=function(){doBan(bt.type);};
+            banBtnRow.appendChild(btn);
+        });
+        banSection.appendChild(banBtnRow);
+
+        // Unban button
+        var unbanBtn=document.createElement('button');unbanBtn.className='btn';
+        unbanBtn.style.cssText='width:100%;margin-top:8px;padding:10px;border-color:#5f5;color:#5f5;';
+        unbanBtn.textContent='Unban (All Types)';
+        unbanBtn.onclick=async function(){
+            await db.collection('users').doc(uid).update({banned:false,banReason:null,banType:null,banExpiry:null,banDurationLabel:null,displayName:data.username});
+            if(data.ip){await db.collection('bans').doc('ip_'+data.ip.replace(/\./g,'_')).delete().catch(function(){});}
+            if(data.deviceFingerprint){await db.collection('bans').doc('device_'+data.deviceFingerprint).delete().catch(function(){});}
+            info.querySelector('div:first-child').style.color='#fff';
+            info.querySelector('div:first-child').textContent=data.username;
+            showNotification('@'+uname+' unbanned.');
+        };
+        banSection.appendChild(unbanBtn);
+        targetArea.appendChild(banSection);
+
+        // Tag management
         var tagRow=document.createElement('div');tagRow.style.cssText='display:flex;gap:8px;margin-bottom:8px;';
         var tagInp=document.createElement('input');tagInp.type='text';tagInp.placeholder='Tag (e.g. [Dev])';
         tagInp.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:8px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;";
         var addTagBtn=document.createElement('button');addTagBtn.className='btn';addTagBtn.style.cssText='padding:8px 14px;';addTagBtn.textContent='+Tag';
-        addTagBtn.onclick=async function(){
-            var tag=tagInp.value.trim();if(!tag)return;
-            var tags=data.tags||[];if(tags.indexOf(tag)===-1)tags.push(tag);
-            await db.collection('users').doc(uid).update({tags:tags});
-            data.tags=tags;info.querySelector('div:last-child').innerHTML=renderTags(tags);
-            showNotification('Tag added.');tagInp.value='';
-        };
+        addTagBtn.onclick=async function(){var tag=tagInp.value.trim();if(!tag)return;var tags=data.tags||[];if(tags.indexOf(tag)===-1)tags.push(tag);await db.collection('users').doc(uid).update({tags:tags});data.tags=tags;info.querySelector('div:nth-child(3)').innerHTML=renderTags(tags);showNotification('Tag added.');tagInp.value='';};
         var remTagBtn=document.createElement('button');remTagBtn.className='btn';remTagBtn.style.cssText='padding:8px 14px;border-color:#f55;color:#f55;';remTagBtn.textContent='-Tag';
-        remTagBtn.onclick=async function(){
-            var tag=tagInp.value.trim();if(!tag)return;
-            var tags=(data.tags||[]).filter(function(t){return t!==tag;});
-            await db.collection('users').doc(uid).update({tags:tags});
-            data.tags=tags;info.querySelector('div:last-child').innerHTML=renderTags(tags);
-            showNotification('Tag removed.');tagInp.value='';
-        };
+        remTagBtn.onclick=async function(){var tag=tagInp.value.trim();if(!tag)return;var tags=(data.tags||[]).filter(function(t){return t!==tag;});await db.collection('users').doc(uid).update({tags:tags});data.tags=tags;info.querySelector('div:nth-child(3)').innerHTML=renderTags(tags);showNotification('Tag removed.');tagInp.value='';};
         tagRow.appendChild(tagInp);tagRow.appendChild(addTagBtn);tagRow.appendChild(remTagBtn);targetArea.appendChild(tagRow);
 
-        // Add/remove followers
+        // Followers override
         var fRow=document.createElement('div');fRow.style.cssText='display:flex;gap:8px;margin-bottom:8px;';
         var fInp=document.createElement('input');fInp.type='number';fInp.placeholder='Follower count override';
         fInp.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:8px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;";
-        var setFBtn=document.createElement('button');setFBtn.className='btn';setFBtn.style.cssText='padding:8px 14px;';setFBtn.textContent='Set Followers';
-        setFBtn.onclick=async function(){
-            var n=parseInt(fInp.value);if(isNaN(n))return;
-            await db.collection('users').doc(uid).update({followerOverride:n});
-            showNotification('Follower count set to '+n);
-        };
+        var setFBtn=document.createElement('button');setFBtn.className='btn';setFBtn.style.cssText='padding:8px 14px;';setFBtn.textContent='Set';
+        setFBtn.onclick=async function(){var n=parseInt(fInp.value);if(isNaN(n))return;await db.collection('users').doc(uid).update({followerOverride:n});showNotification('Followers set to '+n);};
         fRow.appendChild(fInp);fRow.appendChild(setFBtn);targetArea.appendChild(fRow);
 
-        // Rename display name
+        // Rename
         var rnRow=document.createElement('div');rnRow.style.cssText='display:flex;gap:8px;';
         var rnInp=document.createElement('input');rnInp.type='text';rnInp.placeholder='New display name';
         rnInp.style.cssText="flex:1;background:#000;border:3px solid #fff;padding:8px;color:#fff;font-family:'Courier Prime',monospace;font-size:14px;";
         var rnBtn=document.createElement('button');rnBtn.className='btn';rnBtn.style.cssText='padding:8px 14px;';rnBtn.textContent='Rename';
-        rnBtn.onclick=async function(){
-            var n=rnInp.value.trim();if(!n)return;
-            await db.collection('users').doc(uid).update({displayName:n});
-            showNotification('Renamed to '+n);
-        };
+        rnBtn.onclick=async function(){var n=rnInp.value.trim();if(!n)return;await db.collection('users').doc(uid).update({displayName:n});showNotification('Renamed to '+n);};
         rnRow.appendChild(rnInp);rnRow.appendChild(rnBtn);targetArea.appendChild(rnRow);
     };
 
