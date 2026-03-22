@@ -438,6 +438,7 @@ auth.onAuthStateChanged(async function(user){
             showPage('homePage'); loadFriends(); listenForCall(); listenForFriendRequests(); applyTags();
             updateLastOnline();
             logActivity(user.uid,'login','Logged in');
+            requestNotificationPermission();
         } else {
             document.getElementById('profileUsernameDisplay').textContent='@'+user.email.replace('@usen.app','');
             showPage('setupPage');
@@ -531,6 +532,55 @@ function loadFriends(){
     if(friendsUnsub)friendsUnsub();
     friendsUnsub=db.collection('users').doc(currentUser.uid).collection('friends')
         .onSnapshot(function(snap){renderChatList(snap.docs.map(function(d){return d.data();}));});
+    // Listen for new messages across all chats for push notifications
+    listenForPushMessages();
+}
+
+// ── BROWSER PUSH NOTIFICATIONS ────────────────────────────
+var pushMsgUnsubs=[];
+var lastMsgTimestamps={};
+
+function requestNotificationPermission(){
+    if(!('Notification' in window))return;
+    if(Notification.permission==='default'){
+        Notification.requestPermission();
+    }
+}
+
+function sendPush(title,body,onclick){
+    if(!('Notification' in window))return;
+    if(Notification.permission!=='granted')return;
+    // Don't notify if tab is focused
+    if(document.visibilityState==='visible')return;
+    var n=new Notification(title,{body:body,icon:'https://44devs.github.io/icon.png',badge:'https://44devs.github.io/icon.png',silent:false});
+    if(onclick) n.onclick=function(){window.focus();n.close();onclick();};
+    setTimeout(function(){n.close();},6000);
+}
+
+async function listenForPushMessages(){
+    // Clean up old listeners
+    pushMsgUnsubs.forEach(function(u){try{u();}catch(e){}});
+    pushMsgUnsubs=[];
+    // Get friends list to watch their chats
+    var friendsSnap=await db.collection('users').doc(currentUser.uid).collection('friends').get();
+    friendsSnap.forEach(function(doc){
+        var f=doc.data();
+        var chatId=[currentUser.uid,f.uid].sort().join('_');
+        // Only get new messages (after now)
+        var since=firebase.firestore.Timestamp.now();
+        var unsub=db.collection('chats').doc(chatId).collection('messages')
+            .where('timestamp','>',since)
+            .onSnapshot(function(snap){
+                snap.docChanges().forEach(function(change){
+                    if(change.type!=='added')return;
+                    var m=change.doc.data();
+                    if(m.fromUid===currentUser.uid)return; // own message
+                    var preview=m.type==='text'?(m.text||'').slice(0,60):m.type==='image'?'📷 Image':m.type==='video'?'🎥 Video':m.type==='audio'?'🎤 Voice message':'📎 File';
+                    sendPush('Usen | @'+f.username+' sent a message',preview,function(){openChat(f);});
+                });
+            });
+        pushMsgUnsubs.push(unsub);
+    });
 }
 function renderChatList(friends){
     var list=document.getElementById('chatList');list.innerHTML='';
@@ -870,7 +920,15 @@ async function blockUser(uid,username){
 // ── FRIEND REQUESTS ───────────────────────────────────────
 function listenForFriendRequests(){
     db.collection('users').doc(currentUser.uid).collection('friendRequests')
-        .onSnapshot(function(snap){snap.docChanges().forEach(function(ch){if(ch.type==='added')showFriendRequestNotif(ch.doc.data());});});
+        .onSnapshot(function(snap){
+            snap.docChanges().forEach(function(ch){
+                if(ch.type==='added'){
+                    var req=ch.doc.data();
+                    showFriendRequestNotif(req);
+                    sendPush('Usen | @'+req.fromUsername+' sent you a friend request','Tap to view',function(){generateAccountsList();});
+                }
+            });
+        });
     // Also listen for active group calls in joined groups
     db.collection('groups').where('memberUids','array-contains',currentUser.uid).get().then(function(snap){
         snap.forEach(function(doc){
@@ -1164,7 +1222,14 @@ async function startCall(friend,withVideo){
     db.collection('users').doc(friend.uid).update({incomingCall:{callId:activeChatId,callerName:currentProfile.displayName,withVideo:withVideo}});
 }
 function listenForCall(){
-    db.collection('users').doc(currentUser.uid).onSnapshot(function(snap){var data=snap.data();if(!data||!data.incomingCall)return;var call=data.incomingCall;db.collection('users').doc(currentUser.uid).update({incomingCall:firebase.firestore.FieldValue.delete()});if(peerConnection)return;showIncomingCall(call);});
+    db.collection('users').doc(currentUser.uid).onSnapshot(function(snap){
+        var data=snap.data();if(!data||!data.incomingCall)return;
+        var call=data.incomingCall;
+        db.collection('users').doc(currentUser.uid).update({incomingCall:firebase.firestore.FieldValue.delete()});
+        if(peerConnection)return;
+        sendPush('Usen | @'+call.callerName+' is calling you!',call.withVideo?'📹 Incoming video call':'📞 Incoming voice call',function(){showIncomingCall(call);});
+        showIncomingCall(call);
+    });
 }
 function showIncomingCall(call){
     var ex=document.getElementById('incomingCallModal');if(ex)ex.remove();
