@@ -157,7 +157,7 @@
 </div>
 <div class="menu-modal" id="menuModal">
     <div class="menu-option" onclick="openAccountsModal()">Accounts</div>
-    <div class="menu-option" onclick="openSocialModal()">Social</div>
+    <div class="menu-option" onclick="goToSocialCreation()">Social</div>
     <div class="menu-option" onclick="openGroupsModal()">Groups</div>
 </div>
 <div class="modal" id="accountsModal">
@@ -176,27 +176,15 @@
     </div>
 </div>
 <div class="modal" id="socialModal">
-    <div class="modal-header"><span>Create Post</span><button class="modal-close" onclick="closeSocialModal()">X</button></div>
-    <div id="socialModalInner" style="flex:1;display:flex;flex-direction:column;min-height:0;">
-        <!-- Social Creation page (iframe mode) -->
-        <div id="socialIframeWrap" style="flex:1;display:none;flex-direction:column;min-height:0;">
-            <iframe id="socialCreationFrame"
-                src=""
-                style="flex:1;width:100%;border:none;background:#000;"
-                allow="camera;microphone"
-                allowfullscreen>
-            </iframe>
+    <div class="modal-header"><span>Create Post</span><button class="modal-close" onclick="closeModal('socialModal')">X</button></div>
+    <div class="modal-content" style="padding:0;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:3px solid #fff;">
+            <button class="btn post-type-btn active-type" id="ptb_pic" onclick="selectPostType('pic')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:18px 0;">Pic</button>
+            <button class="btn post-type-btn" id="ptb_thought" onclick="selectPostType('thought')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:18px 0;">Thought</button>
+            <button class="btn post-type-btn" id="ptb_status" onclick="selectPostType('status')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:18px 0;">Status</button>
+            <button class="btn post-type-btn" id="ptb_vid" onclick="selectPostType('vid')" style="border:none;border-radius:0;padding:18px 0;">Vid</button>
         </div>
-        <!-- Fallback native post UI (used when iframe fails or for Pic) -->
-        <div id="socialNativeWrap" style="flex:1;display:flex;flex-direction:column;min-height:0;padding:0;">
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:3px solid #fff;">
-                <button class="btn post-type-btn active-type" id="ptb_pic" onclick="selectPostType('pic')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:18px 0;">Pic</button>
-                <button class="btn post-type-btn" id="ptb_thought" onclick="selectPostType('thought')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:18px 0;">Thought</button>
-                <button class="btn post-type-btn" id="ptb_status" onclick="selectPostType('status')" style="border:none;border-right:3px solid #fff;border-radius:0;padding:18px 0;">Status</button>
-                <button class="btn post-type-btn" id="ptb_vid" onclick="selectPostType('vid')" style="border:none;border-radius:0;padding:18px 0;">Vid</button>
-            </div>
-            <div id="postTypeContent" style="padding:20px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1;"></div>
-        </div>
+        <div id="postTypeContent" style="padding:20px;display:flex;flex-direction:column;gap:12px;"></div>
     </div>
 </div>
 <div class="modal" id="feedModal">
@@ -3572,29 +3560,17 @@ function updateLastOnline(){
 function openMenuModal(){document.getElementById('menuModal').classList.add('active');}
 function closeMenuModal(){document.getElementById('menuModal').classList.remove('active');}
 function openAccountsModal(){closeMenuModal();generateAccountsList();document.getElementById('accountsModal').classList.add('active');}
-function openSocialModal(){
+function openSocialModal(){closeMenuModal();selectPostType('pic');document.getElementById('socialModal').classList.add('active');}
+function goToSocialCreation(){
     closeMenuModal();
-    var iframeWrap=document.getElementById('socialIframeWrap');
-    var nativeWrap=document.getElementById('socialNativeWrap');
-    var frame=document.getElementById('socialCreationFrame');
-    frame.src='https://44devs.github.io/index.html/#Social-Creation';
-    iframeWrap.style.display='flex';
-    nativeWrap.style.display='none';
-    document.getElementById('socialModal').classList.add('active');
-}
-function closeSocialModal(){
-    var frame=document.getElementById('socialCreationFrame');
-    if(frame) frame.src='';
-    document.getElementById('socialModal').classList.remove('active');
-    closeMenuModal();
-}
-function openSocialNative(type){
-    var iframeWrap=document.getElementById('socialIframeWrap');
-    var nativeWrap=document.getElementById('socialNativeWrap');
-    iframeWrap.style.display='none';
-    nativeWrap.style.display='flex';
-    nativeWrap.style.flexDirection='column';
-    selectPostType(type||'pic');
+    // If already on the 44devs host, just set the hash and open the modal
+    if(window.location.hostname==='44devs.github.io'){
+        window.location.hash='Social-Creation';
+        openSocialModal();
+    } else {
+        // Otherwise navigate to the Social-Creation page
+        window.location.href='https://44devs.github.io/index.html/#Social-Creation';
+    }
 }
 function openGroupsModalFn(){closeMenuModal();openGroupsModal();}
 function closeModal(id){document.getElementById(id).classList.remove('active');closeMenuModal();}
@@ -3621,6 +3597,18 @@ loadSettings();
 // Auto-open profile from URL hash e.g. #@username
 (function(){
     var hash=window.location.hash;
+    // Social-Creation link: #Social-Creation
+    if(hash==='#Social-Creation'||hash==='#social-creation'){
+        var tries=0;
+        var scInterval=setInterval(function(){
+            tries++;if(tries>40){clearInterval(scInterval);return;}
+            if(!currentUser)return;
+            if(!document.getElementById('homePage').classList.contains('active'))return;
+            clearInterval(scInterval);
+            openSocialModal();
+        },300);
+        return;
+    }
     // Group link: #group-slug-number  e.g. #group-my-group-1
     var gm=hash.match(/^#group-(.+)-(\d+)$/);
     if(gm){
