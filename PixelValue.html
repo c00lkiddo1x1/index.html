@@ -362,6 +362,7 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
 </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -389,6 +390,25 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
       <div class="lfield"><label>PASSWORD</label><input type="password" id="l-pass" autocomplete="current-password" onkeydown="lKey(event)"></div>
       <div class="lerr" id="l-err"></div>
       <button class="lbtn" id="l-btn" onclick="lSubmit()">Sign In</button>
+    </div>
+  </div>
+  <!-- 2FA SCREEN -->
+  <div class="login-box" id="twofa-box" style="display:none;margin-top:0">
+    <div class="login-glow" style="background:linear-gradient(90deg,var(--ac),var(--gn))"></div>
+    <div class="login-body">
+      <div class="login-logo">2-Step Verify <span>Enter the 6-digit code sent to your email</span></div>
+      <div class="lfield" style="margin-top:20px">
+        <label>VERIFICATION CODE</label>
+        <input type="text" id="twofa-inp" maxlength="6" placeholder="000000" autocomplete="one-time-code"
+          style="text-align:center;letter-spacing:8px;font-size:28px"
+          onkeydown="if(event.key==='Enter')twoFaSubmit()">
+      </div>
+      <div class="lerr" id="twofa-err"></div>
+      <button class="lbtn" id="twofa-btn" onclick="twoFaSubmit()">Verify</button>
+      <div style="text-align:center;margin-top:14px;display:flex;gap:16px;justify-content:center">
+        <button onclick="twoFaResend()" style="background:none;border:none;color:var(--ac2);font-family:'Rajdhani',sans-serif;font-size:14px;cursor:pointer;text-decoration:underline">Resend code</button>
+        <button onclick="twoFaCancel()" style="background:none;border:none;color:var(--mu);font-family:'Rajdhani',sans-serif;font-size:14px;cursor:pointer">Back to login</button>
+      </div>
     </div>
   </div>
 </div>
@@ -466,7 +486,6 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
     <!-- ITEM SHOP -->
     <div class="pg" id="pg-itemshop">
       <div class="pg-title">🛒 Item Shop</div>
-      <div class="pg-sub">Spend PV on exclusive items. Purchases transfer PV to @44devs.</div>
 
       <div id="itemshop-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"></div>
     </div>
@@ -839,8 +858,35 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
       <div class="sset"><h3>Edit Profile</h3>
         <div style="display:grid;gap:10px;max-width:420px">
           <div><div class="plab">CHANGE USERNAME</div><div style="display:flex;gap:8px"><div class="iw" style="flex:1;margin:0"><input type="text" id="set-uname" placeholder="New username"></div><button class="pbtn" style="background:var(--ac);margin:0;padding:12px 16px;width:auto" onclick="changeUsername()">Save</button></div></div>
-          <div><div class="plab">EMAIL (for account recovery)</div><div style="display:flex;gap:8px"><div class="iw" style="flex:1;margin:0"><input type="email" id="set-email" placeholder="your@email.com"></div><button class="pbtn" style="background:var(--ac);margin:0;padding:12px 16px;width:auto" onclick="saveEmail()">Save</button></div></div>
+          <div>
+            <div class="plab">EMAIL (for 2-Step Verification)</div>
+            <div style="display:flex;gap:8px">
+              <div class="iw" style="flex:1;margin:0"><input type="email" id="set-email" placeholder="your@email.com"></div>
+              <button class="pbtn" style="background:var(--ac);margin:0;padding:12px 16px;width:auto" onclick="saveEmail()">Save</button>
+            </div>
+          </div>
+          <div style="background:var(--sf2);border:1px solid var(--br);border-radius:8px;padding:12px 14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:14px;font-weight:700">2-Step Verification</div>
+                <div style="font-size:11px;color:var(--mu)" id="twofa-status-lbl">Off — requires email to be set</div>
+              </div>
+              <button id="twofa-toggle-btn" onclick="toggle2FA()" style="padding:9px 16px;border:none;border-radius:7px;background:var(--sf3);color:var(--tx2);font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s">Enable</button>
+            </div>
+          </div>
           <div><div class="plab">PROFILE PICTURE</div>
+            <div style="margin-bottom:10px;display:flex;align-items:center;gap:12px">
+              <div id="pfp-current-photo" style="width:56px;height:56px;border-radius:50%;background:var(--sf2);border:2px solid var(--br2);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0"></div>
+              <div>
+                <div style="font-size:13px;font-weight:700;margin-bottom:6px">Custom Photo</div>
+                <label style="padding:8px 14px;background:var(--sf2);border:1px solid var(--br);border-radius:7px;color:var(--tx2);font-size:13px;font-weight:600;cursor:pointer;display:inline-block">
+                  Upload Photo
+                  <input type="file" accept="image/*" id="pfp-photo-input" style="display:none" onchange="uploadCustomPfp(this)">
+                </label>
+                <button onclick="removeCustomPfp()" id="pfp-remove-btn" style="display:none;margin-left:8px;padding:8px 12px;background:var(--rd2);border:1px solid var(--rd);border-radius:7px;color:var(--rd);font-size:12px;font-weight:700;cursor:pointer">Remove</button>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--mu);margin-bottom:10px">Or pick an emoji:</div>
             <div style="display:flex;gap:10px;flex-wrap:wrap" id="pfp-picker"></div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;background:var(--sf2);border:1px solid var(--br);border-radius:8px;padding:12px 14px">
@@ -1177,17 +1223,17 @@ function lSubmit(){
       if(!localData){err.textContent='Wrong username or password.';btn.disabled=false;btn.textContent='Sign In';return;}
       if(localData.banned){err.textContent='Account banned.';btn.disabled=false;btn.textContent='Sign In';return;}
       if(localData.password!==h){err.textContent='Wrong username or password.';btn.disabled=false;btn.textContent='Sign In';return;}
-      CU=u; localStorage.setItem('pv_session',CU);
       btn.disabled=false; btn.textContent='Sign In';
-      enterApp();
+      // Check 2FA
+      if(localData.twoFA && localData.email){ twoFaStart(u); }
+      else { CU=u; localStorage.setItem('pv_session',CU); enterApp(); }
     }).catch(()=>{
-      // Firestore unavailable — local only
       if(!DB[u]){err.textContent='Wrong username or password.';btn.disabled=false;btn.textContent='Sign In';return;}
       if(DB[u].banned){err.textContent='Account banned.';btn.disabled=false;btn.textContent='Sign In';return;}
       if(DB[u].password!==h){err.textContent='Wrong username or password.';btn.disabled=false;btn.textContent='Sign In';return;}
-      CU=u; localStorage.setItem('pv_session',CU);
       btn.disabled=false; btn.textContent='Sign In';
-      enterApp();
+      if(DB[u].twoFA && DB[u].email){ twoFaStart(u); }
+      else { CU=u; localStorage.setItem('pv_session',CU); enterApp(); }
     });
   }
 }
@@ -2097,11 +2143,50 @@ function renderThemePicker(){
 function renderPfpPicker(){
   const pfps=['😎','🐔','💎','🎰','🃏','🏆','⚡','🌙','🔥','👾','🦊','🐉'];
   const el=document.getElementById('pfp-picker'); if(!el)return;
-  const cur=CU&&ud().pfp||'😎';
+  const d=ud();
+  const cur=d.pfp||'😎';
+  const hasPhoto=!!d.pfpPhoto;
+  // Show current photo preview
+  const photoEl=document.getElementById('pfp-current-photo');
+  const removeBtn=document.getElementById('pfp-remove-btn');
+  if(photoEl){
+    if(hasPhoto){ photoEl.innerHTML=`<img src="${d.pfpPhoto}" style="width:100%;height:100%;object-fit:cover">`; }
+    else { photoEl.textContent=cur; }
+  }
+  if(removeBtn) removeBtn.style.display=hasPhoto?'inline-block':'none';
   el.innerHTML=pfps.map(p=>`
-    <div onclick="savePfp('${p}')" style="width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;background:var(--sf2);border:2px solid ${p===cur?'var(--ac)':'var(--br)'};transition:border-color .2s">${p}</div>`).join('');
+    <div onclick="savePfp('${p}')" style="width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;background:var(--sf2);border:2px solid ${(!hasPhoto&&p===cur)?'var(--ac)':'var(--br)'};transition:border-color .2s">${p}</div>`).join('');
+  // Update 2FA status label
+  render2FAStatus();
 }
-function savePfp(p){if(!CU)return;const d=ud();d.pfp=p;setUD(d);renderPfpPicker();}
+function savePfp(p){
+  if(!CU)return;
+  const d=ud();
+  d.pfp=p;
+  d.pfpPhoto=null; // clear custom photo when emoji picked
+  setUD(d);
+  renderPfpPicker();
+}
+function uploadCustomPfp(input){
+  if(!CU||!input.files[0])return;
+  const file=input.files[0];
+  if(file.size>2*1024*1024){ alert('Image too large. Max 2MB.'); return; }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const d=ud();
+    d.pfpPhoto=e.target.result;
+    setUD(d);
+    renderPfpPicker();
+  };
+  reader.readAsDataURL(file);
+}
+function removeCustomPfp(){
+  if(!CU)return;
+  const d=ud();
+  d.pfpPhoto=null;
+  setUD(d);
+  renderPfpPicker();
+}
 function togglePrivate(){
   if(!CU){rl();return;}
   const d=ud(); d.private=!d.private; setUD(d);
@@ -2872,7 +2957,7 @@ function renderItemShop(){
     grid.innerHTML=`<div style="background:var(--sf);border:1px solid var(--br2);border-radius:14px;padding:40px;text-align:center;grid-column:1/-1">
       <div style="font-size:48px;margin-bottom:14px">🔜</div>
       <div style="font-size:20px;font-weight:700;margin-bottom:8px">Coming Soon</div>
-      <div style="font-size:13px;color:var(--mu)">Items will appear here once the shop is stocked by @44devs.</div>
+      <div style="font-size:13px;color:var(--mu)">Items coming soon.</div>
     </div>`;
     return;
   }
@@ -3278,6 +3363,144 @@ async function unlinkAccounts(){
   });
 }
 
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  2-STEP VERIFICATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EmailJS config — set these up at emailjs.com (free, 200 emails/month)
+// 1. Sign up at emailjs.com
+// 2. Add Email Service (Gmail etc) → copy Service ID below
+// 3. Create Template with variables {{to_email}}, {{code}}, {{username}}
+// 4. Copy Template ID and Public Key below
+const EJS_SERVICE  = 'YOUR_SERVICE_ID';   // replace
+const EJS_TEMPLATE = 'YOUR_TEMPLATE_ID';  // replace
+const EJS_KEY      = 'YOUR_PUBLIC_KEY';   // replace
+
+let _2faUser=null, _2faCode=null, _2faExpiry=0;
+
+function gen2FACode(){ return String(Math.floor(100000+Math.random()*900000)); }
+
+async function send2FAEmail(email, code, username){
+  // If EmailJS not configured, fall back to showing code in alert (dev mode)
+  if(EJS_KEY==='YOUR_PUBLIC_KEY'){
+    pvAlert('📧','Dev Mode — 2FA Code',
+      'EmailJS not configured yet.\n\nYour code is: ' + code + '\n\nSet up emailjs.com and update EJS_SERVICE, EJS_TEMPLATE, EJS_KEY in the code.');
+    return true;
+  }
+  try{
+    emailjs.init(EJS_KEY);
+    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE, {
+      to_email: email,
+      code: code,
+      username: username,
+    });
+    return true;
+  }catch(e){
+    console.error('EmailJS error:', e);
+    return false;
+  }
+}
+
+async function twoFaStart(username){
+  _2faUser = username;
+  _2faCode = gen2FACode();
+  _2faExpiry = Date.now() + 10*60*1000; // 10 min expiry
+  const data = DB[username]||{};
+  const email = data.email||'';
+  // Show 2FA box, hide login box
+  document.querySelector('.login-box').style.display='none';
+  const tfBox = document.getElementById('twofa-box');
+  if(tfBox){ tfBox.style.display='block'; }
+  document.getElementById('twofa-err').textContent='';
+  document.getElementById('twofa-inp').value='';
+  const ok = await send2FAEmail(email, _2faCode, username);
+  if(!ok){
+    document.getElementById('twofa-err').textContent='Failed to send email. Check your connection.';
+  }
+  setTimeout(()=>document.getElementById('twofa-inp').focus(), 100);
+}
+
+function twoFaSubmit(){
+  const inp = document.getElementById('twofa-inp').value.trim();
+  const err = document.getElementById('twofa-err');
+  const btn = document.getElementById('twofa-btn');
+  if(!inp){ err.textContent='Enter the 6-digit code.'; return; }
+  if(Date.now() > _2faExpiry){ err.textContent='Code expired. Request a new one.'; return; }
+  if(inp !== _2faCode){ err.textContent='Wrong code. Try again.'; return; }
+  // Success
+  btn.disabled=true;
+  CU=_2faUser; localStorage.setItem('pv_session',CU);
+  _2faUser=null; _2faCode=null;
+  document.getElementById('twofa-box').style.display='none';
+  document.querySelector('.login-box').style.display='block';
+  enterApp();
+}
+
+async function twoFaResend(){
+  if(!_2faUser) return;
+  _2faCode = gen2FACode();
+  _2faExpiry = Date.now() + 10*60*1000;
+  const data = DB[_2faUser]||{};
+  document.getElementById('twofa-err').textContent='Sending...';
+  const ok = await send2FAEmail(data.email||'', _2faCode, _2faUser);
+  document.getElementById('twofa-err').textContent = ok ? 'New code sent!' : 'Send failed.';
+  document.getElementById('twofa-err').style.color = ok ? 'var(--gn)' : 'var(--rd)';
+  setTimeout(()=>{ const el=document.getElementById('twofa-err'); if(el&&el.textContent==='New code sent!') el.textContent=''; }, 3000);
+}
+
+function twoFaCancel(){
+  _2faUser=null; _2faCode=null;
+  document.getElementById('twofa-box').style.display='none';
+  document.querySelector('.login-box').style.display='block';
+  document.getElementById('twofa-inp').value='';
+  document.getElementById('twofa-err').textContent='';
+}
+
+function render2FAStatus(){
+  const lbl = document.getElementById('twofa-status-lbl');
+  const btn = document.getElementById('twofa-toggle-btn');
+  if(!lbl||!btn||!CU) return;
+  const d = ud();
+  const hasEmail = !!(d.email);
+  const is2FA = !!(d.twoFA && hasEmail);
+  if(is2FA){
+    lbl.textContent='On — code sent to ' + d.email;
+    lbl.style.color='var(--gn)';
+    btn.textContent='Disable';
+    btn.style.background='var(--rd2)';
+    btn.style.color='var(--rd)';
+  } else if(!hasEmail){
+    lbl.textContent='Off — save your email above first';
+    lbl.style.color='var(--mu)';
+    btn.textContent='Enable';
+    btn.style.background='var(--sf3)';
+    btn.style.color='var(--tx2)';
+    btn.disabled=true;
+  } else {
+    lbl.textContent='Off';
+    lbl.style.color='var(--mu)';
+    btn.textContent='Enable';
+    btn.style.background='var(--ac)';
+    btn.style.color='#fff';
+    btn.disabled=false;
+  }
+}
+
+function toggle2FA(){
+  if(!CU){rl();return;}
+  const d=ud();
+  if(!d.email){ pvAlert('📧','Email Required','Save your email address first, then enable 2FA.'); return; }
+  if(d.twoFA){
+    pvConfirm('🔓','Disable 2FA','Are you sure? Your account will only be protected by your password.', ()=>{
+      d.twoFA=false; setUD(d); render2FAStatus();
+    });
+  } else {
+    pvConfirm('🔐','Enable 2FA','Every login will require a code sent to '+d.email+'.', ()=>{
+      d.twoFA=true; setUD(d); render2FAStatus();
+      pvAlert('✅','2FA Enabled','From now on, every login will send a verification code to your email.');
+    });
+  }
+}
 </script>
 </body>
 </html>
