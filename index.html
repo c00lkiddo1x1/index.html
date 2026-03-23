@@ -99,7 +99,19 @@
         @keyframes statusPulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(1.1);}}
         @keyframes flamePulse{0%{transform:scale(1) rotate(-3deg);}100%{transform:scale(1.15) rotate(3deg);}}
         @media(max-width:768px){.bottom-nav{height:60px;}.nav-btn{font-size:20px;}}
-    </style>
+    
+/* ═══ PFP FRAMES ═══ */
+@keyframes lapisAnim{0%{border-color:#0ea5e9;box-shadow:0 0 12px #0ea5e9;}25%{border-color:#1d4ed8;box-shadow:0 0 16px #1d4ed8;}50%{border-color:#3b82f6;box-shadow:0 0 20px #3b82f6;}75%{border-color:#0369a1;box-shadow:0 0 16px #0369a1;}100%{border-color:#0ea5e9;box-shadow:0 0 12px #0ea5e9;}}
+.pv-frame-lapis{border:4px solid #0ea5e9!important;animation:lapisAnim 2.5s ease-in-out infinite!important;}
+.pv-frame-starter{border:4px solid #00d084!important;box-shadow:0 0 10px #00d08455;}
+.pv-frame-pro{border:4px solid #06b6d4!important;box-shadow:0 0 10px #06b6d455;}
+.pv-frame-diamond{border:4px solid #7c4dff!important;box-shadow:0 0 10px #7c4dff55;}
+.pv-frame-mythic{border:4px solid #e879f9!important;box-shadow:0 0 10px #e879f955;}
+.pv-frame-legendary{border:4px solid #ffbb00!important;box-shadow:0 0 10px #ffbb0055;}
+.pv-frame-ruby{border:4px solid #ff3d5a!important;box-shadow:0 0 12px #ff3d5a88;}
+#pfp-lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;align-items:center;justify-content:center;cursor:pointer;}
+#pfp-lightbox.open{display:flex;}
+</style>
 </head>
 <body>
 <div id="loadingPage" class="page active"><div class="spinner"></div><div style="letter-spacing:-1px;font-size:20px;">Usen</div></div>
@@ -233,6 +245,7 @@
 
         <!-- SECTION: Connect PixelValue -->
         <div style="padding:12px 20px;border-bottom:3px solid #fff;border-top:3px solid #fff;font-size:12px;color:#666;letter-spacing:-0.5px;">PIXELVALUE</div>
+        <div class="settings-option"><div class="settings-label">Hide PV Stats on Profile<div style="font-size:12px;color:#666;">Hides balance, rank &amp; leaderboard from your profile</div></div><button class="btn s-toggle" id="tog_pvPrivate" onclick="togglePVPrivate()" style="width:80px;">OFF</button></div>
         <div class="settings-option" style="flex-direction:column;align-items:flex-start;gap:12px;">
             <div class="settings-label">Connect PixelValue Account
                 <div style="font-size:12px;color:#666;">Link your PV account to sync rewards &amp; show on leaderboard.</div>
@@ -1133,10 +1146,42 @@ async function viewProfile(friend){
     cb.onclick=function(){modal.classList.remove('active');history.pushState({},'',window.location.pathname);};
     header.appendChild(cb);modal.appendChild(header);
     var content=document.createElement('div');content.className='modal-content';content.style.cssText='display:flex;flex-direction:column;align-items:center;padding:40px 20px;gap:16px;';
-    // Avatar
-    var av=document.createElement('div');av.style.cssText='width:100px;height:100px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:48px;background:#333;';
-    if(data.avatar){var avImg=document.createElement('img');avImg.src=data.avatar;avImg.style.cssText='width:100%;height:100%;object-fit:cover;';av.appendChild(avImg);}else{av.textContent='?';}
+    // Fetch PV data
+    var pvUserData=null,lbRank=null;
+    try{
+        var pvLinkSnap=await db.collection('usen_pv_links').doc(friend.uid).get();
+        if(pvLinkSnap.exists&&pvLinkSnap.data().pvUser){
+            var pvUsername=pvLinkSnap.data().pvUser;
+            var pvDoc=await db.collection('pv_users').doc(pvUsername).get();
+            if(pvDoc.exists){pvUserData=pvDoc.data();pvUserData._id=pvUsername;}
+            if(pvUserData&&!pvUserData.pvPrivate){
+                var lbSnap=await db.collection('pv_users').orderBy('coins','desc').limit(100).get();
+                var lbPos=lbSnap.docs.findIndex(function(d2){return d2.id===pvUsername;});
+                if(lbPos!==-1) lbRank=lbPos+1;
+            }
+        }
+    }catch(e){}
+
+    // Avatar with frame
+    var equippedFrame=(pvUserData&&pvUserData.equippedFrame)||null;
+    var av=document.createElement('div');
+    if(equippedFrame) av.className='pv-frame-'+equippedFrame;
+    av.style.cssText='width:110px;height:110px;border:3px solid #fff;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:48px;background:#333;cursor:pointer;transition:transform .15s;flex-shrink:0;';
+    av.title='Click to enlarge';
+    var _avSrc=null;
+    if(data.avatar){var avImg=document.createElement('img');avImg.src=data.avatar;avImg.style.cssText='width:100%;height:100%;object-fit:cover;';av.appendChild(avImg);_avSrc=data.avatar;}else{av.textContent='?';}
+    av.onclick=(function(src,emoji){return function(){openPfpLightbox(src,emoji);};})(data.avatar||null,data.avatar?null:'?');
+    av.onmouseenter=function(){this.style.transform='scale(1.07)';};
+    av.onmouseleave=function(){this.style.transform='scale(1)';};
     content.appendChild(av);
+    if(equippedFrame){
+        var FNAME={'starter':'Starter','pro':'Pro','diamond':'Diamond','mythic':'Mythic','legendary':'Legendary','ruby':'Ruby','lapis':'Lapis'};
+        var FCOL={'starter':'#00d084','pro':'#06b6d4','diamond':'#7c4dff','mythic':'#e879f9','legendary':'#ffbb00','ruby':'#ff3d5a','lapis':'#0ea5e9'};
+        var fl=document.createElement('div');
+        fl.textContent='✦ '+(FNAME[equippedFrame]||equippedFrame)+' Frame';
+        fl.style.cssText='font-size:12px;font-weight:700;color:'+(FCOL[equippedFrame]||'#fff')+';letter-spacing:1px;margin-top:-6px;';
+        content.appendChild(fl);
+    }
     // Fields
     [['Display Name',data.displayName||'-'],['Username','@'+(data.username||'-')],['Bio',data.bio||'No bio yet']].forEach(function(row){
         var wrap=document.createElement('div');wrap.style.cssText='width:100%;border:3px solid #fff;padding:15px;';
@@ -1149,6 +1194,35 @@ async function viewProfile(friend){
     var tagLabel=document.createElement('div');tagLabel.style.cssText='font-size:12px;color:#666;margin-bottom:8px;';tagLabel.textContent='Tags';
     var tagVal=document.createElement('div');tagVal.innerHTML=renderTags(data.tags||[]);
     tagWrap.appendChild(tagLabel);tagWrap.appendChild(tagVal);content.appendChild(tagWrap);
+
+    // PV section
+    if(!isPrivate){
+        var pvWrap=document.createElement('div');pvWrap.style.cssText='width:100%;border:3px solid #fff;padding:15px;';
+        var pvLbl=document.createElement('div');pvLbl.style.cssText='font-size:12px;color:#666;margin-bottom:8px;';pvLbl.textContent='PixelValue';pvWrap.appendChild(pvLbl);
+        if(pvUserData&&!pvUserData.pvPrivate){
+            var pvRow=document.createElement('div');pvRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;';
+            var pvBal=document.createElement('div');pvBal.style.cssText='flex:1;background:#111;padding:10px;text-align:center;min-width:90px;';
+            pvBal.innerHTML='<div style="font-size:20px;font-weight:700;color:#ffbb00;">'+(pvUserData.coins||0).toLocaleString()+' PV</div><div style="font-size:11px;color:#666;margin-top:2px;">Balance</div>';
+            pvRow.appendChild(pvBal);
+            if(lbRank!==null){
+                var lbBox=document.createElement('div');lbBox.style.cssText='flex:1;background:#111;padding:10px;text-align:center;min-width:90px;';
+                var med=lbRank===1?'🥇':lbRank===2?'🥈':lbRank===3?'🥉':'';
+                lbBox.innerHTML='<div style="font-size:20px;font-weight:700;color:#fff;">'+med+' Top '+lbRank+'</div><div style="font-size:11px;color:#666;margin-top:2px;">Leaderboard</div>';
+                pvRow.appendChild(lbBox);
+            }
+            pvWrap.appendChild(pvRow);
+            var PVR=[{n:'Noob',req:0,c:'#8899b0'},{n:'Starter',req:1000,c:'#00d084'},{n:'Pro',req:2000,c:'#06b6d4'},{n:'Diamond',req:3000,c:'#7c4dff'},{n:'Mythic',req:4000,c:'#e879f9'},{n:'Legendary',req:5000,c:'#ffbb00'},{n:'Ruby',req:6000,c:'#ff3d5a'},{n:'Lapis',req:7000,c:'#0ea5e9'}];
+            var pvXP=pvUserData.xp||0,pvR=PVR[0];
+            for(var ri=0;ri<PVR.length;ri++){if(pvXP>=PVR[ri].req)pvR=PVR[ri];}
+            var rkLbl=document.createElement('div');rkLbl.style.cssText='font-size:13px;color:'+pvR.c+';font-weight:700;';rkLbl.textContent='PV Rank: '+pvR.n;
+            pvWrap.appendChild(rkLbl);
+        }else if(pvUserData&&pvUserData.pvPrivate){
+            pvWrap.innerHTML+='<div style="font-size:14px;color:#666;font-style:italic;">Stats hidden by user.</div>';
+        }else{
+            pvWrap.innerHTML+='<div style="font-size:14px;color:#666;">User Isn&#39;t Connected.</div>';
+        }
+        content.appendChild(pvWrap);
+    }
 
     if(!isPrivate&&friend.uid!==currentUser.uid){
         // Stats row
@@ -2269,6 +2343,11 @@ async function openAdminPanel(){
 function openSettings(){
     document.getElementById('settingsDisplayName').value=currentProfile.displayName||'';
     setTimeout(renderPVConnectStatus, 150);
+    db.collection('users').doc(currentUser.uid).get().then(function(d2){
+        var pv=d2.exists&&d2.data().pvPrivate;
+        var btn=document.getElementById('tog_pvPrivate');
+        if(btn){btn.textContent=pv?'ON':'OFF';btn.style.background=pv?'#fff':'';btn.style.color=pv?'#000':'';}
+    }).catch(function(){});
     var unEl=document.getElementById('settingsUsernameDisplay');
     if(unEl) unEl.textContent='@'+(currentProfile.username||'');
     // Show admin panel button only for 44devs
@@ -3819,6 +3898,54 @@ async function unlinkPVAccount(){
         showNotification('PixelValue account unlinked.');
     }catch(e){ showNotification('Error unlinking. Try again.'); }
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PFP LIGHTBOX
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function openPfpLightbox(imgSrc,emoji){
+    var lb=document.getElementById('pfp-lightbox');
+    var inner=document.getElementById('pfp-lightbox-inner');
+    if(!lb||!inner)return;
+    inner.innerHTML='';
+    if(imgSrc){
+        var img=document.createElement('img');
+        img.src=imgSrc;
+        img.style.cssText='width:320px;height:320px;max-width:88vw;max-height:88vw;object-fit:cover;border-radius:50%;border:3px solid #fff;';
+        inner.appendChild(img);
+    }else{
+        var em=document.createElement('div');
+        em.style.cssText='width:280px;height:280px;max-width:88vw;max-height:88vw;border-radius:50%;background:#222;display:flex;align-items:center;justify-content:center;font-size:120px;border:3px solid #fff;';
+        em.textContent=emoji||'?';
+        inner.appendChild(em);
+    }
+    lb.classList.add('open');
+}
+function closePfpLightbox(){
+    var lb=document.getElementById('pfp-lightbox');
+    if(lb) lb.classList.remove('open');
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePfpLightbox();});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PV PRIVACY TOGGLE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function togglePVPrivate(){
+    if(!currentUser)return;
+    var doc=await db.collection('users').doc(currentUser.uid).get();
+    var d=doc.data()||{};
+    var nv=!d.pvPrivate;
+    await db.collection('users').doc(currentUser.uid).update({pvPrivate:nv});
+    try{
+        var lnk=await db.collection('usen_pv_links').doc(currentUser.uid).get();
+        if(lnk.exists&&lnk.data().pvUser)
+            await db.collection('pv_users').doc(lnk.data().pvUser).update({pvPrivate:nv});
+    }catch(e){}
+    var btn=document.getElementById('tog_pvPrivate');
+    if(btn){btn.textContent=nv?'ON':'OFF';btn.style.background=nv?'#fff':'';btn.style.color=nv?'#000':'';}
+    showNotification('PV stats '+(nv?'hidden':'visible')+' on profile.');
+}
 </script>
+
+<div id="pfp-lightbox" onclick="closePfpLightbox()"><div id="pfp-lightbox-inner"></div></div>
 </body>
 </html>
