@@ -386,9 +386,7 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
     <div class="pg" id="pg-itemshop">
       <div class="pg-title">🛒 Item Shop</div>
       <div class="pg-sub">Spend PV on exclusive items. Purchases transfer PV to @44devs.</div>
-      <div id="itemshop-notice" style="background:var(--sf2);border:1px solid var(--am);border-radius:8px;padding:11px 14px;margin-bottom:18px;color:var(--am);font-size:13px">
-        Items are digital cosmetics. PV is transferred to the developer (@44devs) on purchase. No refunds.
-      </div>
+
       <div id="itemshop-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"></div>
     </div>
 
@@ -1012,8 +1010,9 @@ async function fsGet(username){
 async function fsLeaderboard(){
   try{
     const snap = await FSDB.collection('pv_users').orderBy('coins','desc').limit(100).get();
+    console.log('[PV] Leaderboard docs:', snap.size);
     return snap.docs.map(d=>({username:d.id,...d.data()}));
-  }catch(e){ return []; }
+  }catch(e){ console.error('[PV] Leaderboard error:', e); return []; }
 }
 
 
