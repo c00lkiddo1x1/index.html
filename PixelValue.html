@@ -510,8 +510,6 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
     <div class="s-div"></div>
     <div class="s-sec">SOCIAL</div>
     <button class="nb" onclick="nav('profiles',this)">Profiles</button>
-    <div class="s-div"></div>
-    <div class="s-sec">SOCIAL</div>
     <button class="nb" onclick="nav('leaderboard',this)">🏆 Leaderboard</button>
     <div class="s-div"></div>
     <div class="s-sec">ACCOUNT</div>
@@ -1213,6 +1211,8 @@ function enterApp(){
   // Show admin nav for 44devs
   const adminBtn = document.getElementById('admin-nav-btn');
   if(adminBtn) adminBtn.style.display = (CU===ADMIN_USER) ? 'block' : 'none';
+  // Force-sync local data to Firestore on every login so leaderboard stays current
+  try{ fsSet(CU, ud()).catch(()=>{}); }catch(e){}
 }
 function signOut(){
   pvConfirm('👤','Sign Out','Are you sure you want to sign out?', ()=>{
