@@ -378,8 +378,14 @@ body.theme-sunset{--bg:#0d0608;--bg2:#130a0e;--sf:#1a0d12;--sf2:#221018;--sf3:#2
     <div class="pg" id="pg-leaderboard">
       <div class="pg-title">🏆 Leaderboard</div>
       <div class="pg-sub">Top players ranked by PV balance.</div>
-      <div id="lb-loading" style="color:var(--mu);font-size:14px;padding:20px 0">Loading...</div>
-      <div id="lb-list" style="display:grid;gap:10px;max-width:680px"></div>
+      <div style="background:var(--sf);border:1px solid var(--br2);border-radius:14px;padding:22px;max-width:700px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--mu);letter-spacing:2px">RANKINGS</div>
+          <button onclick="renderLeaderboard()" style="background:var(--sf2);border:1px solid var(--br);border-radius:7px;color:var(--tx2);font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;padding:7px 14px;cursor:pointer">↻ Refresh</button>
+        </div>
+        <div id="lb-loading" style="color:var(--mu);font-size:13px;padding:14px 0;font-family:'Space Mono',monospace">Loading...</div>
+        <div id="lb-list" style="display:grid;gap:8px"></div>
+      </div>
     </div>
 
     <!-- ITEM SHOP -->
@@ -2827,22 +2833,25 @@ async function renderLeaderboard(){
   if(loadEl) loadEl.style.display='none';
   if(!users.length){ if(listEl) listEl.innerHTML='<div style="color:var(--mu)">No data yet.</div>'; return; }
   const medals = ['🥇','🥈','🥉'];
+  const rankColors = ['#ffd700','#c0c0c0','#cd7f32'];
   listEl.innerHTML = users.map((u,i)=>{
     const rank = i+1;
     const medal = medals[i]||'';
     const isMe = CU && u.username===CU;
     const b = (u.coins||0).toLocaleString();
-    return `<div style="background:${isMe?'var(--ac3)':'var(--sf)'};border:1px solid ${isMe?'var(--ac)':'var(--br)'};border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px">
-      <div style="font-size:22px;width:32px;text-align:center;font-weight:700;color:${rank<=3?'var(--gd)':'var(--mu)'};font-family:'Space Mono',monospace">${medal||rank}</div>
-      <div style="flex:1">
-        <div style="font-size:15px;font-weight:700;color:${isMe?'var(--ac2)':'var(--tx)'}">@${u.username}${isMe?' (you)':''}</div>
-        <div style="font-size:11px;color:var(--mu);font-family:'Space Mono',monospace">Value: ${b} PV</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:17px;font-weight:700;color:var(--gd)">${b} PV</div>
-        <div style="font-size:10px;color:var(--mu)">Top ${rank}</div>
-      </div>
-    </div>`;
+    const rowBg = isMe?'var(--ac3)':(rank===1?'rgba(255,215,0,.06)':rank===2?'rgba(192,192,192,.04)':rank===3?'rgba(205,127,50,.04)':'var(--sf2)');
+    const rowBorder = isMe?'var(--ac)':(rank<=3?rankColors[i]:'var(--br)');
+    return '<div style="background:'+rowBg+';border:1px solid '+rowBorder+';border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:14px">'
+      +'<div style="font-size:'+(rank<=3?'22px':'14px')+';width:36px;text-align:center;font-weight:700;color:'+(rank<=3?rankColors[i]:'var(--mu)')+';font-family:\'Space Mono\',monospace;flex-shrink:0">'+(medal||rank)+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:15px;font-weight:700;color:'+(isMe?'var(--ac2)':'var(--tx)')+'">@'+u.username+(isMe?' (you)':'')+'</div>'
+        +'<div style="font-size:11px;color:var(--mu);font-family:\'Space Mono\',monospace;margin-top:2px">Value: '+b+' PV</div>'
+      +'</div>'
+      +'<div style="text-align:right;flex-shrink:0">'
+        +'<div style="font-size:16px;font-weight:700;color:var(--gd)">'+b+' PV</div>'
+        +'<div style="font-size:10px;color:var(--mu);margin-top:2px;font-family:\'Space Mono\',monospace">TOP '+rank+'</div>'
+      +'</div>'
+    +'</div>';
   }).join('');
 }
 
